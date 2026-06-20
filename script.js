@@ -45,7 +45,9 @@
 
     // WebRTC
     let pc = null;
-    let isOfferer = false; // Кто создаёт OFFER
+    let isOfferer = false;
+    let connectionTimeout = null;
+    let iceTimeout = null;
 
     // Таймер общения
     let timerInterval = null;
@@ -57,20 +59,39 @@
     // ============ КОНФИГУРАЦИЯ ============
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
 
+    // ============ МНОГО STUN + TURN СЕРВЕРОВ ============
     const ICE_SERVERS = {
         iceServers: [
+            // STUN серверы
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-        ]
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.ekiga.net' },
+            { urls: 'stun:stun.ideasip.com' },
+            { urls: 'stun:stun.iptel.org' },
+            { urls: 'stun:stun.rixtelecom.se' },
+            { urls: 'stun:stun.schlund.de' },
+            // TURN серверы (для обхода NAT)
+            {
+                urls: 'turn:relay1.expressturn.com:3478',
+                username: 'efZRVVVFCWXWUOQCUJ',
+                credential: 'sZ6BVVUYSXJEVNKY'
+            },
+            {
+                urls: 'turn:relay2.expressturn.com:3478',
+                username: 'efZRVVVFCWXWUOQCUJ',
+                credential: 'sZ6BVVUYSXJEVNKY'
+            }
+        ],
+        iceCandidatePoolSize: 10
     };
 
     // ============ СОЗДАНИЕ ID ============
     function generateId() {
-        return Math.random().toString(36).substring(2, 10) + 
-               Math.random().toString(36).substring(2, 10);
+        return 'user_' + Math.random().toString(36).substring(2, 8) + 
+               Math.random().toString(36).substring(2, 8);
     }
 
     // ============ ЗВУКИ ============
@@ -170,7 +191,8 @@
         serverDot.className = 'status-dot';
         
         socket = io(SERVER_URL, {
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'],
+            timeout: 10000
         });
 
         socket.on('connect', () => {
@@ -201,7 +223,6 @@
             setStatus('⏳ ОЖИДАНИЕ...', 'searching');
         });
 
-        // ============ НАЙДЕН СОБЕСЕДНИК ============
         socket.on('partner-found', (data) => {
             console.log('🎯 Найден собеседник:', data.partnerId);
             if (searchTimeout) {
@@ -209,21 +230,18 @@
                 searchTimeout = null;
             }
             currentPartnerId = data.partnerId;
-            
-            // ⭐ МЫ СОЗДАЁМ OFFER (мы - инициатор)
             isOfferer = true;
             createOffer();
         });
 
-        // ============ ПОЛУЧЕН OFFER (МЫ ОТВЕЧАЕМ) ============
         socket.on('webRTC-offer', (data) => {
             console.log('📞 Получен OFFER от:', data.from);
-            if (isConnected || isSearching) {
+            if (isConnected || isSearching || pc) {
                 console.log('⚠️ Уже в разговоре, игнорируем');
                 return;
             }
             currentPartnerId = data.from;
-            isOfferer = false; // МЫ НЕ СОЗДАЁМ OFFER, мы отвечаем
+            isOfferer = false;
             handleOffer(data.offer);
         });
 
@@ -239,18 +257,17 @@
 
         socket.on('partner-disconnected', (data) => {
             console.log('🔴 Собеседник отключился');
-            if (isConnected) {
-                disconnectCall();
-            }
+            showNotification('🔴 Собеседник отключился', 'Поиск нового собеседника...');
+            disconnectCall();
         });
 
         socket.on('disconnect', () => {
             console.warn('⚠️ Сервер отключился');
             serverText.textContent = '⚠️ Сервер отключён';
             serverDot.className = 'status-dot';
+            disconnectCall();
         });
 
-        // Чат
         socket.on('chat-message', (data) => {
             console.log('💬 Получено сообщение от', data.from, ':', data.text);
             if (data.from === currentPartnerId) {
@@ -260,7 +277,7 @@
         });
     }
 
-    // ============ WEBRTC: СОЗДАНИЕ OFFER (МЫ ИНИЦИАТОР) ============
+    // ============ WEBRTC: СОЗДАНИЕ OFFER ============
     function createOffer() {
         if (!localStream) {
             console.error('❌ Нет локального потока');
@@ -276,7 +293,6 @@
 
         pc = new RTCPeerConnection(ICE_SERVERS);
 
-        // Добавляем все треки
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
             console.log(`✅ Добавлен трек: ${track.kind}`);
@@ -284,15 +300,13 @@
 
         pc.ontrack = (event) => {
             console.log('✅ Получен трек от собеседника:', event.track.kind);
-            if (event.track.kind === 'video' || event.track.kind === 'audio') {
-                const stream = new MediaStream();
-                stream.addTrack(event.track);
-                if (event.track.kind === 'video') {
-                    showRemoteVideo(stream);
-                }
-                if (!isConnected) {
-                    onConnected();
-                }
+            const stream = new MediaStream();
+            stream.addTrack(event.track);
+            if (event.track.kind === 'video') {
+                showRemoteVideo(stream);
+            }
+            if (!isConnected) {
+                onConnected();
             }
         };
 
@@ -308,14 +322,42 @@
 
         pc.oniceconnectionstatechange = () => {
             console.log('🔄 ICE состояние:', pc.iceConnectionState);
-            if (pc.iceConnectionState === 'disconnected' || 
-                pc.iceConnectionState === 'failed') {
-                disconnectCall();
-            }
             if (pc.iceConnectionState === 'connected') {
                 console.log('✅ ICE соединение установлено!');
+                if (!isConnected) {
+                    onConnected();
+                }
+            }
+            if (pc.iceConnectionState === 'disconnected' || 
+                pc.iceConnectionState === 'failed') {
+                console.log('❌ ICE потерян');
+                disconnectCall();
             }
         };
+
+        pc.onconnectionstatechange = () => {
+            console.log('🔄 Соединение состояние:', pc.connectionState);
+            if (pc.connectionState === 'connected') {
+                console.log('✅ WebRTC соединение установлено!');
+                if (!isConnected) {
+                    onConnected();
+                }
+            }
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                console.log('❌ WebRTC потерян');
+                disconnectCall();
+            }
+        };
+
+        // Таймаут соединения (15 секунд)
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+        connectionTimeout = setTimeout(() => {
+            if (!isConnected && pc) {
+                console.log('⏱️ Таймаут соединения');
+                showNotification('⏱️ Время соединения истекло', 'Попробуйте снова');
+                disconnectCall();
+            }
+        }, 15000);
 
         pc.createOffer()
             .then(offer => pc.setLocalDescription(offer))
@@ -332,7 +374,7 @@
             });
     }
 
-    // ============ WEBRTC: ОБРАБОТКА OFFER (МЫ ОТВЕЧАЕМ) ============
+    // ============ WEBRTC: ОБРАБОТКА OFFER ============
     function handleOffer(offer) {
         if (!localStream) {
             console.error('❌ Нет локального потока');
@@ -355,15 +397,13 @@
 
         pc.ontrack = (event) => {
             console.log('✅ Получен трек от собеседника:', event.track.kind);
-            if (event.track.kind === 'video' || event.track.kind === 'audio') {
-                const stream = new MediaStream();
-                stream.addTrack(event.track);
-                if (event.track.kind === 'video') {
-                    showRemoteVideo(stream);
-                }
-                if (!isConnected) {
-                    onConnected();
-                }
+            const stream = new MediaStream();
+            stream.addTrack(event.track);
+            if (event.track.kind === 'video') {
+                showRemoteVideo(stream);
+            }
+            if (!isConnected) {
+                onConnected();
             }
         };
 
@@ -379,14 +419,42 @@
 
         pc.oniceconnectionstatechange = () => {
             console.log('🔄 ICE состояние:', pc.iceConnectionState);
-            if (pc.iceConnectionState === 'disconnected' || 
-                pc.iceConnectionState === 'failed') {
-                disconnectCall();
-            }
             if (pc.iceConnectionState === 'connected') {
                 console.log('✅ ICE соединение установлено!');
+                if (!isConnected) {
+                    onConnected();
+                }
+            }
+            if (pc.iceConnectionState === 'disconnected' || 
+                pc.iceConnectionState === 'failed') {
+                console.log('❌ ICE потерян');
+                disconnectCall();
             }
         };
+
+        pc.onconnectionstatechange = () => {
+            console.log('🔄 Соединение состояние:', pc.connectionState);
+            if (pc.connectionState === 'connected') {
+                console.log('✅ WebRTC соединение установлено!');
+                if (!isConnected) {
+                    onConnected();
+                }
+            }
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                console.log('❌ WebRTC потерян');
+                disconnectCall();
+            }
+        };
+
+        // Таймаут соединения (15 секунд)
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+        connectionTimeout = setTimeout(() => {
+            if (!isConnected && pc) {
+                console.log('⏱️ Таймаут соединения');
+                showNotification('⏱️ Время соединения истекло', 'Попробуйте снова');
+                disconnectCall();
+            }
+        }, 15000);
 
         pc.setRemoteDescription(offer)
             .then(() => pc.createAnswer())
@@ -444,7 +512,14 @@
         timerDisplay.classList.add('active');
         playSound('connect');
         clearChat();
+        
+        if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+            connectionTimeout = null;
+        }
+        
         console.log('🎉 СОЕДИНЕНИЕ УСТАНОВЛЕНО!');
+        showNotification('✅ Подключено!', 'Вы в разговоре с собеседником');
     }
 
     // ============ ПОИСК СОБЕСЕДНИКА ============
@@ -478,7 +553,7 @@
                     socket.emit('cancel-search');
                 }
                 
-                showNotification('⏱️ Собеседник не найден', 'Повторите попытку через несколько секунд');
+                showNotification('⏱️ Собеседник не найден', 'Повторите попытку');
                 playSound('fail');
                 
                 if (navigator.vibrate) {
@@ -495,6 +570,11 @@
         if (pc) {
             pc.close();
             pc = null;
+        }
+        
+        if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+            connectionTimeout = null;
         }
         
         if (searchTimeout) {
@@ -563,6 +643,11 @@
             searchTimeout = null;
         }
         
+        if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+            connectionTimeout = null;
+        }
+        
         document.querySelectorAll('.notification').forEach(el => el.remove());
         
         if (isSearching) {
@@ -629,13 +714,8 @@
         
         document.getElementById('complainSend').addEventListener('click', () => {
             if (!selectedReason) return;
-            
-            const partnerId = partnerIdElement.textContent;
-            console.log(`📨 Жалоба на ${partnerId}: ${selectedReason}`);
-            
-            showNotification('✅ Жалоба отправлена', 'Мы рассмотрим вашу жалобу в ближайшее время');
+            showNotification('✅ Жалоба отправлена', 'Мы рассмотрим вашу жалобу');
             playSound('message');
-            
             overlay.remove();
             complainBtn.disabled = true;
             complainBtn.classList.remove('active');
@@ -935,7 +1015,8 @@
 
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
-        console.log('🎥 Используется НАТИВНЫЙ WebRTC');
+        console.log('🎥 Используется НАТИВНЫЙ WebRTC с TURN');
+        console.log('🔄 Если соединение зависло - проверьте консоль (F12)');
     }
 
     init();
