@@ -1,112 +1,76 @@
-/* ВСЕ ПРЕДЫДУЩИЕ СТИЛИ СОХРАНЯЕМ, ДОБАВЛЯЕМ ЭТО В КОНЦЕ */
+/* ВСЕ ПРЕДЫДУЩИЕ СТИЛИ СОХРАНЯЕМ, ДОБАВЛЯЕМ НОВЫЕ */
 
-/* ---------- ОВЕРЛЕЙ РАЗРЕШЕНИЙ ---------- */
-.permission-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(5, 8, 10, 0.92);
-    backdrop-filter: blur(12px);
+/* ---------- СТАТУС СЕРВЕРА ---------- */
+.server-status {
     display: flex;
-    justify-content: center;
     align-items: center;
-    z-index: 1000;
-    animation: fadeIn 0.4s ease;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    margin-bottom: 14px;
+    background: #0a1216;
+    border-radius: 40px;
+    border: 1px solid #1a332b;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: #5a8a7a;
 }
 
-.permission-overlay.hidden {
-    display: none;
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff4444;
+    transition: 0.3s;
+    display: inline-block;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; backdrop-filter: blur(0px); }
-    to { opacity: 1; backdrop-filter: blur(12px); }
+.status-dot.connected {
+    background: #44ff88;
+    box-shadow: 0 0 20px #44ff8866;
+    animation: pulse-dot 2s infinite;
 }
 
-.permission-card {
-    background: #141c20;
-    padding: 50px 40px 40px;
-    border-radius: 48px;
-    max-width: 440px;
-    width: 90%;
-    text-align: center;
-    border: 1px solid rgba(0, 255, 200, 0.15);
-    box-shadow: 0 0 80px rgba(0, 255, 200, 0.06), inset 0 0 40px rgba(0, 255, 200, 0.02);
-    transform: scale(1);
-    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
 }
 
-@keyframes popIn {
-    from { transform: scale(0.8); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+/* ---------- СЧЁТЧИК ОНЛАЙН ---------- */
+.online-counter {
+    margin-top: 12px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: #4a7a6a;
+    background: #0a1414;
+    padding: 8px 20px;
+    border-radius: 40px;
+    display: inline-block;
+    border: 1px solid #1a3a32;
 }
 
-.permission-icon {
-    font-size: 64px;
-    margin-bottom: 16px;
-    display: block;
-    animation: float 3s ease-in-out infinite;
+.online-counter span {
+    color: #80ddc0;
+    font-weight: 600;
 }
 
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-}
-
-.permission-card h2 {
-    color: #b5ffe6;
-    font-size: 28px;
-    font-weight: 300;
-    letter-spacing: 4px;
-    margin-bottom: 12px;
-    text-shadow: 0 0 30px #00d5b055;
-}
-
-.permission-card p {
-    color: #80cbbc;
-    font-size: 18px;
-    font-weight: 300;
-    letter-spacing: 1px;
-    line-height: 1.6;
-    margin-bottom: 30px;
+/* ---------- ОВЕРЛЕЙ (уже есть, но обновим) ---------- */
+.permission-overlay {
+    /* ... существующие стили ... */
 }
 
 .permission-card .btn {
-    font-size: 20px;
-    padding: 16px 48px;
-    min-width: 200px;
+    /* ... существующие стили ... */
 }
 
-.permission-hint {
-    margin-top: 20px;
-    font-size: 14px;
-    color: #3f6a5e;
-    letter-spacing: 1px;
-}
-
-.permission-hint span {
-    display: inline-block;
-    background: #0f1a17;
-    padding: 6px 18px;
-    border-radius: 30px;
-    border: 1px solid #1d3a32;
-}
-
-/* Адаптив для оверлея */
-@media (max-width: 500px) {
-    .permission-card {
-        padding: 30px 20px 30px;
-        border-radius: 32px;
+/* Адаптив */
+@media (max-width: 700px) {
+    .server-status {
+        font-size: 12px;
+        padding: 6px 12px;
     }
-    .permission-card h2 {
-        font-size: 22px;
-    }
-    .permission-card p {
-        font-size: 16px;
-    }
-    .permission-icon {
-        font-size: 48px;
+    .online-counter {
+        font-size: 14px;
+        padding: 6px 16px;
     }
 }
