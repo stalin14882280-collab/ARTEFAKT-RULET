@@ -17,7 +17,6 @@
                 <h2>✦ АРТЕФАКТ АКТИВАЦИЯ ✦</h2>
                 <p>Выбери режим подключения</p>
                 
-                <!-- КНОПКИ ВЫБОРА РЕЖИМА -->
                 <div class="mode-selector">
                     <button class="mode-btn active" data-mode="video" id="modeVideo">
                         <span class="mode-icon">📹</span>
@@ -44,39 +43,61 @@
             <span id="serverText">Подключение к серверу...</span>
         </div>
 
-        <div class="video-grid">
-            <div class="video-box remote" id="remoteBox">
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div class="placeholder" id="remotePlaceholder">⚡ ожидание</div>
-                <div class="badge">СОБЕСЕДНИК</div>
+        <!-- ОСНОВНАЯ СЕТКА: ВИДЕО + ЧАТ -->
+        <div class="main-grid">
+            <!-- Видео-сетка -->
+            <div class="video-section">
+                <div class="video-grid">
+                    <div class="video-box remote" id="remoteBox">
+                        <video id="remoteVideo" autoplay playsinline></video>
+                        <div class="placeholder" id="remotePlaceholder">⚡ ожидание</div>
+                        <div class="badge">СОБЕСЕДНИК</div>
+                        <!-- Таймер общения -->
+                        <div class="timer" id="timerDisplay">⏱️ 00:00</div>
+                    </div>
+
+                    <div class="video-box self" id="selfBox">
+                        <video id="selfVideo" autoplay playsinline muted></video>
+                        <div class="placeholder" id="selfPlaceholder">📷 камера</div>
+                        <div class="badge" id="selfBadge">ВЫ</div>
+                    </div>
+                </div>
+
+                <!-- ID собеседника -->
+                <div class="partner-info" id="partnerInfo">
+                    <span class="label">СОБЕСЕДНИК:</span>
+                    <span class="id" id="partnerId">—</span>
+                </div>
+
+                <div class="status-bar" id="statusBar">
+                    <span class="dot" id="statusDot"></span>
+                    <span id="statusText">НАЖМИТЕ «НАЧАТЬ»</span>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-primary" id="startBtn" disabled>▶ НАЧАТЬ</button>
+                    <button class="btn btn-danger" id="stopBtn" disabled>⏹ СТОП</button>
+                </div>
+
+                <div class="online-counter" id="onlineCounter">
+                    👥 Онлайн: <span id="onlineCount">0</span>
+                </div>
             </div>
 
-            <div class="video-box self" id="selfBox">
-                <video id="selfVideo" autoplay playsinline muted></video>
-                <div class="placeholder" id="selfPlaceholder">📷 камера</div>
-                <div class="badge" id="selfBadge">ВЫ</div>
+            <!-- ЧАТ -->
+            <div class="chat-section">
+                <div class="chat-header">
+                    <span class="chat-title">💬 ЧАТ</span>
+                    <span class="chat-status" id="chatStatus">⛔ Не в чате</span>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-placeholder">Начни общение...</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Напиши сообщение..." disabled />
+                    <button class="chat-send-btn" id="chatSendBtn" disabled>➤</button>
+                </div>
             </div>
-        </div>
-
-        <!-- ID собеседника -->
-        <div class="partner-info" id="partnerInfo">
-            <span class="label">СОБЕСЕДНИК:</span>
-            <span class="id" id="partnerId">—</span>
-        </div>
-
-        <div class="status-bar" id="statusBar">
-            <span class="dot" id="statusDot"></span>
-            <span id="statusText">НАЖМИТЕ «НАЧАТЬ»</span>
-        </div>
-
-        <div class="actions">
-            <button class="btn btn-primary" id="startBtn" disabled>▶ НАЧАТЬ</button>
-            <button class="btn btn-danger" id="stopBtn" disabled>⏹ СТОП</button>
-        </div>
-
-        <!-- Счётчик онлайн -->
-        <div class="online-counter" id="onlineCounter">
-            👥 Онлайн: <span id="onlineCount">0</span>
         </div>
 
         <div class="footer">артефакт · соединение · случайность</div>
