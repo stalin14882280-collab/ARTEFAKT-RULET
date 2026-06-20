@@ -47,7 +47,6 @@
     let pc = null;
     let isOfferer = false;
     let connectionTimeout = null;
-    let iceTimeout = null;
 
     // Таймер общения
     let timerInterval = null;
@@ -59,30 +58,22 @@
     // ============ КОНФИГУРАЦИЯ ============
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
 
-    // ============ МНОГО STUN + TURN СЕРВЕРОВ ============
     const ICE_SERVERS = {
         iceServers: [
-            // STUN серверы
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
             { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:stun.ekiga.net' },
-            { urls: 'stun:stun.ideasip.com' },
-            { urls: 'stun:stun.iptel.org' },
-            { urls: 'stun:stun.rixtelecom.se' },
-            { urls: 'stun:stun.schlund.de' },
-            // TURN серверы (для обхода NAT)
             {
-                urls: 'turn:relay1.expressturn.com:3478',
-                username: 'efZRVVVFCWXWUOQCUJ',
-                credential: 'sZ6BVVUYSXJEVNKY'
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
             },
             {
-                urls: 'turn:relay2.expressturn.com:3478',
-                username: 'efZRVVVFCWXWUOQCUJ',
-                credential: 'sZ6BVVUYSXJEVNKY'
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
             }
         ],
         iceCandidatePoolSize: 10
@@ -191,8 +182,7 @@
         serverDot.className = 'status-dot';
         
         socket = io(SERVER_URL, {
-            transports: ['websocket', 'polling'],
-            timeout: 10000
+            transports: ['websocket', 'polling']
         });
 
         socket.on('connect', () => {
@@ -293,6 +283,10 @@
 
         pc = new RTCPeerConnection(ICE_SERVERS);
 
+        // ПРИНУДИТЕЛЬНО добавляем трансиверы
+        pc.addTransceiver('video', { direction: 'sendrecv' });
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
             console.log(`✅ Добавлен трек: ${track.kind}`);
@@ -349,7 +343,7 @@
             }
         };
 
-        // Таймаут соединения (15 секунд)
+        // Таймаут соединения
         if (connectionTimeout) clearTimeout(connectionTimeout);
         connectionTimeout = setTimeout(() => {
             if (!isConnected && pc) {
@@ -390,6 +384,10 @@
 
         pc = new RTCPeerConnection(ICE_SERVERS);
 
+        // ПРИНУДИТЕЛЬНО добавляем трансиверы
+        pc.addTransceiver('video', { direction: 'sendrecv' });
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
             console.log(`✅ Добавлен трек: ${track.kind}`);
@@ -446,7 +444,7 @@
             }
         };
 
-        // Таймаут соединения (15 секунд)
+        // Таймаут соединения
         if (connectionTimeout) clearTimeout(connectionTimeout);
         connectionTimeout = setTimeout(() => {
             if (!isConnected && pc) {
@@ -478,8 +476,13 @@
             console.warn('⚠️ Нет PeerConnection для ANSWER');
             return;
         }
+        if (pc.currentRemoteDescription) {
+            console.log('⚠️ Remote description уже установлен, игнорируем ANSWER');
+            return;
+        }
         console.log('📞 Обработка ANSWER');
         pc.setRemoteDescription(answer)
+            .then(() => console.log('✅ ANSWER установлен'))
             .catch(err => console.error('Ошибка установки ANSWER:', err));
     }
 
@@ -845,17 +848,16 @@
         remoteVideo.srcObject = stream;
         
         remoteVideo.onloadedmetadata = () => {
-            remoteVideo.play().catch(() => {
-                console.warn('⚠️ Не удалось воспроизвести видео собеседника');
-            });
-            console.log('📷 Видео собеседника загружено');
+            remoteVideo.play()
+                .then(() => console.log('✅ Видео собеседника играет!'))
+                .catch((e) => console.warn('⚠️ Не удалось воспроизвести:', e));
         };
         
         setTimeout(() => {
             if (remoteVideo.paused) {
                 remoteVideo.play().catch(() => {});
             }
-        }, 1000);
+        }, 500);
     }
 
     function hideRemoteVideo() {
@@ -1016,7 +1018,6 @@
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
         console.log('🎥 Используется НАТИВНЫЙ WebRTC с TURN');
-        console.log('🔄 Если соединение зависло - проверьте консоль (F12)');
     }
 
     init();
