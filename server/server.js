@@ -16,13 +16,14 @@ const io = new Server(server, {
 });
 
 // Хранилище
-const onlineUsers = new Map();
+const onlineUsers = new Map(); // peerId -> socketId
 const waitingUsers = [];
 
 // ============ SOCKET.IO ============
 io.on('connection', (socket) => {
     console.log(`🟢 Новое подключение: ${socket.id}`);
 
+    // Регистрация пользователя
     socket.on('register', (peerId) => {
         console.log(`📝 Регистрация: ${peerId}`);
         onlineUsers.set(peerId, socket.id);
@@ -35,6 +36,7 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Поиск собеседника
     socket.on('find-partner', () => {
         const peerId = socket.data.peerId;
         console.log(`🔍 ${peerId} ищет собеседника`);
@@ -57,6 +59,7 @@ io.on('connection', (socket) => {
         console.log(`⏳ ${peerId} добавлен в очередь (${waitingUsers.length})`);
     });
 
+    // Отмена поиска
     socket.on('cancel-search', () => {
         const index = waitingUsers.indexOf(socket.id);
         if (index !== -1) {
@@ -65,6 +68,39 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ============ ЧАТ: ОТПРАВКА СООБЩЕНИЯ ============
+    socket.on('chat-message', (data) => {
+        const fromPeerId = socket.data.peerId;
+        const { to, text, time } = data;
+        
+        console.log(`💬 Чат: ${fromPeerId} -> ${to}: "${text}"`);
+        
+        // Находим сокет получателя
+        const targetSocketId = onlineUsers.get(to);
+        if (targetSocketId) {
+            // Отправляем сообщение получателю
+            io.to(targetSocketId).emit('chat-message', {
+                from: fromPeerId,
+                text: text,
+                time: time
+            });
+            console.log(`✅ Сообщение доставлено ${to}`);
+        } else {
+            console.log(`❌ Пользователь ${to} не найден в сети`);
+        }
+    });
+
+    // Завершение разговора
+    socket.on('end-call', () => {
+        const peerId = socket.data.peerId;
+        console.log(`📞 ${peerId} завершил разговор`);
+        const index = waitingUsers.indexOf(socket.id);
+        if (index !== -1) {
+            waitingUsers.splice(index, 1);
+        }
+    });
+
+    // Отключение
     socket.on('disconnect', () => {
         const peerId = socket.data.peerId;
         if (peerId) {
@@ -73,15 +109,6 @@ io.on('connection', (socket) => {
             io.emit('online-count', onlineUsers.size);
         }
         
-        const index = waitingUsers.indexOf(socket.id);
-        if (index !== -1) {
-            waitingUsers.splice(index, 1);
-        }
-    });
-
-    socket.on('end-call', () => {
-        const peerId = socket.data.peerId;
-        console.log(`📞 ${peerId} завершил разговор`);
         const index = waitingUsers.indexOf(socket.id);
         if (index !== -1) {
             waitingUsers.splice(index, 1);
@@ -107,4 +134,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📡 Socket.IO готов к подключениям`);
+    console.log(`💬 Чат поддерживает обмен сообщениями`);
 });
