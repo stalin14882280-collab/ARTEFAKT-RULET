@@ -47,6 +47,7 @@
     let pc = null;
     let isOfferer = false;
     let connectionTimeout = null;
+    let pendingCandidates = []; // Буфер для кандидатов
 
     // Таймер общения
     let timerInterval = null;
@@ -221,6 +222,7 @@
             }
             currentPartnerId = data.partnerId;
             isOfferer = true;
+            pendingCandidates = [];
             createOffer();
         });
 
@@ -232,6 +234,7 @@
             }
             currentPartnerId = data.from;
             isOfferer = false;
+            pendingCandidates = [];
             handleOffer(data.offer);
         });
 
@@ -264,6 +267,49 @@
                 addMessage(data.text, 'other', data.time);
                 playSound('message');
             }
+        });
+    }
+
+    // ============ ДОБАВЛЕНИЕ ICE КАНДИДАТА С БУФЕРИЗАЦИЕЙ ============
+    function addIceCandidate(candidate) {
+        if (!pc) {
+            console.warn('⚠️ Нет PeerConnection для CANDIDATE');
+            return;
+        }
+        
+        // Если remote description ещё не установлен — сохраняем в буфер
+        if (!pc.currentRemoteDescription && !pc.remoteDescription) {
+            console.log('📦 Буферизация ICE кандидата (remote description ещё нет)');
+            pendingCandidates.push(candidate);
+            return;
+        }
+        
+        console.log('📞 Добавление ICE кандидата');
+        pc.addIceCandidate(candidate)
+            .then(() => console.log('✅ ICE кандидат добавлен'))
+            .catch(err => console.error('❌ Ошибка добавления кандидата:', err));
+    }
+
+    // ============ ОБРАБОТКА НАКОПЛЕННЫХ КАНДИДАТОВ ============
+    function flushPendingCandidates() {
+        if (!pc) return;
+        if (pendingCandidates.length === 0) return;
+        
+        console.log(`📦 Обработка ${pendingCandidates.length} накопленных кандидатов`);
+        
+        // Проверяем, что remote description уже установлен
+        if (!pc.currentRemoteDescription && !pc.remoteDescription) {
+            console.warn('⚠️ Remote description всё ещё нет, откладываем');
+            return;
+        }
+        
+        const candidates = [...pendingCandidates];
+        pendingCandidates = [];
+        
+        candidates.forEach(candidate => {
+            pc.addIceCandidate(candidate)
+                .then(() => console.log('✅ ICE кандидат добавлен (из буфера)'))
+                .catch(err => console.error('❌ Ошибка добавления кандидата (из буфера):', err));
         });
     }
 
@@ -361,6 +407,8 @@
                     to: currentPartnerId,
                     offer: pc.localDescription
                 });
+                // После отправки OFFER пробуем обработать накопленные кандидаты
+                setTimeout(() => flushPendingCandidates(), 500);
             })
             .catch(err => {
                 console.error('Ошибка создания OFFER:', err);
@@ -455,7 +503,12 @@
         }, 15000);
 
         pc.setRemoteDescription(offer)
-            .then(() => pc.createAnswer())
+            .then(() => {
+                console.log('✅ Remote description установлен');
+                // Теперь можно добавить накопленные кандидаты
+                flushPendingCandidates();
+                return pc.createAnswer();
+            })
             .then(answer => pc.setLocalDescription(answer))
             .then(() => {
                 console.log('📤 Отправка ANSWER');
@@ -482,19 +535,17 @@
         }
         console.log('📞 Обработка ANSWER');
         pc.setRemoteDescription(answer)
-            .then(() => console.log('✅ ANSWER установлен'))
+            .then(() => {
+                console.log('✅ ANSWER установлен');
+                // Теперь можно добавить накопленные кандидаты
+                flushPendingCandidates();
+            })
             .catch(err => console.error('Ошибка установки ANSWER:', err));
     }
 
     // ============ WEBRTC: ОБРАБОТКА CANDIDATE ============
     function handleCandidate(candidate) {
-        if (!pc) {
-            console.warn('⚠️ Нет PeerConnection для CANDIDATE');
-            return;
-        }
-        console.log('📞 Добавление ICE кандидата');
-        pc.addIceCandidate(candidate)
-            .catch(err => console.error('Ошибка добавления кандидата:', err));
+        addIceCandidate(candidate);
     }
 
     // ============ ПОДКЛЮЧЕНИЕ УСТАНОВЛЕНО ============
@@ -574,6 +625,8 @@
             pc.close();
             pc = null;
         }
+        
+        pendingCandidates = [];
         
         if (connectionTimeout) {
             clearTimeout(connectionTimeout);
@@ -1018,6 +1071,7 @@
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
         console.log('🎥 Используется НАТИВНЫЙ WebRTC с TURN');
+        console.log('📦 ICE кандидаты буферизируются до установки remote description');
     }
 
     init();
