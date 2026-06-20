@@ -55,13 +55,13 @@
     // ============ КОНФИГУРАЦИЯ ============
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
 
-    // ============ НАСТРОЙКА PEERJS С ПРИНУДИТЕЛЬНЫМ МЕДИА ============
+    // ============ НАСТРОЙКА PEERJS ============
     const PEER_CONFIG = {
         host: '0.peerjs.com',
         port: 443,
         path: '/',
         secure: true,
-        debug: 3,
+        debug: 0,
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -74,8 +74,7 @@
                     username: 'efZRVVVFCWXWUOQCUJ',
                     credential: 'sZ6BVVUYSXJEVNKY'
                 }
-            ],
-            sdpSemantics: 'unified-plan'
+            ]
         }
     };
 
@@ -279,7 +278,26 @@
         });
     }
 
-    // ============ ЗВОНОК ПАРТНЁРУ ============
+    // ============ СОЗДАНИЕ RTCPeerConnection НАПРЯМУЮ ============
+    function createPeerConnection() {
+        const pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                {
+                    urls: 'turn:relay1.expressturn.com:3478',
+                    username: 'efZRVVVFCWXWUOQCUJ',
+                    credential: 'sZ6BVVUYSXJEVNKY'
+                }
+            ]
+        });
+        return pc;
+    }
+
+    // ============ ЗВОНОК ПАРТНЁРУ (ЧЕРЕЗ PEERJS) ============
     function callPartner(partnerId) {
         if (!localStream) {
             console.error('❌ Нет локального потока');
@@ -292,22 +310,21 @@
         
         setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
         
-        // ПРИНУДИТЕЛЬНО передаём поток
-        const call = peer.call(partnerId, localStream, {
-            video: true,
-            audio: true,
-            metadata: { type: 'videochat' }
+        // СОЗДАЁМ НАТИВНЫЙ RTCPeerConnection
+        const pc = createPeerConnection();
+        
+        // Добавляем все треки
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
         });
         
-        currentCall = call;
-
-        call.on('stream', (remoteStream) => {
-            console.log('✅ Стрим получен от:', partnerId);
-            console.log(`📹 Видео-треков: ${remoteStream.getVideoTracks().length}`);
-            console.log(`🎧 Аудио-треков: ${remoteStream.getAudioTracks().length}`);
-            
-            if (remoteStream.getVideoTracks().length > 0) {
-                showRemoteVideo(remoteStream);
+        // Слушаем входящие треки
+        pc.ontrack = (event) => {
+            console.log('✅ Получен трек:', event.track.kind);
+            if (event.track.kind === 'video') {
+                const stream = new MediaStream();
+                stream.addTrack(event.track);
+                showRemoteVideo(stream);
                 isConnected = true;
                 isSearching = false;
                 setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
@@ -324,22 +341,56 @@
                 timerDisplay.classList.add('active');
                 playSound('connect');
                 clearChat();
-            } else {
-                console.warn('⚠️ Нет видео-треков в стриме!');
-                // Пробуем пересоздать стрим
-                restartCall(partnerId);
             }
-        });
-
-        call.on('close', () => {
-            console.log('🔴 Звонок закрыт');
-            if (isConnected) {
-                disconnectCall();
-            }
-        });
+        };
+        
+        // Создаём оффер
+        pc.createOffer()
+            .then(offer => pc.setLocalDescription(offer))
+            .then(() => {
+                // Отправляем оффер через PeerJS
+                const call = peer.call(partnerId, pc.localDescription, {
+                    metadata: { type: 'webrtc-offer' }
+                });
+                
+                currentCall = call;
+                
+                // Обработка ответа
+                call.on('data', (data) => {
+                    try {
+                        const message = JSON.parse(data);
+                        if (message.type === 'answer') {
+                            pc.setRemoteDescription(new RTCSessionDescription(message));
+                        } else if (message.type === 'candidate') {
+                            pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+                        }
+                    } catch (e) {}
+                });
+                
+                // Отправка ICE-кандидатов
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        call.send(JSON.stringify({
+                            type: 'candidate',
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+                
+                call.on('close', () => {
+                    console.log('🔴 Звонок закрыт');
+                    pc.close();
+                    if (isConnected) {
+                        disconnectCall();
+                    }
+                });
+            })
+            .catch(err => {
+                console.error('Ошибка создания оффера:', err);
+            });
     }
 
-    // ============ ПРИНЯТЬ ЗВОНОК ============
+    // ============ ПРИНЯТЬ ЗВОНОК (ЧЕРЕЗ PEERJS) ============
     function acceptCall(call) {
         if (!localStream) {
             call.close();
@@ -353,23 +404,24 @@
         isActive = true;
         currentCall = call;
         currentPartnerId = call.peer;
-        
-        // ПРИНУДИТЕЛЬНО отвечаем с потоком
-        call.answer(localStream, {
-            video: true,
-            audio: true
-        });
-        
         partnerIdElement.textContent = call.peer;
         partnerIdElement.className = 'id connected';
-
-        call.on('stream', (remoteStream) => {
-            console.log('✅ Входящий стрим от:', call.peer);
-            console.log(`📹 Видео-треков: ${remoteStream.getVideoTracks().length}`);
-            console.log(`🎧 Аудио-треков: ${remoteStream.getAudioTracks().length}`);
-            
-            if (remoteStream.getVideoTracks().length > 0) {
-                showRemoteVideo(remoteStream);
+        
+        // СОЗДАЁМ НАТИВНЫЙ RTCPeerConnection
+        const pc = createPeerConnection();
+        
+        // Добавляем все треки
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
+        });
+        
+        // Слушаем входящие треки
+        pc.ontrack = (event) => {
+            console.log('✅ Получен трек:', event.track.kind);
+            if (event.track.kind === 'video') {
+                const stream = new MediaStream();
+                stream.addTrack(event.track);
+                showRemoteVideo(stream);
                 isConnected = true;
                 isSearching = false;
                 setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
@@ -384,33 +436,46 @@
                 timerDisplay.classList.add('active');
                 playSound('connect');
                 clearChat();
-            } else {
-                console.warn('⚠️ Нет видео-треков в стриме!');
             }
+        };
+        
+        // Получаем оффер из данных
+        call.on('data', (data) => {
+            try {
+                const message = JSON.parse(data);
+                if (message.type === 'offer') {
+                    pc.setRemoteDescription(new RTCSessionDescription(message))
+                        .then(() => pc.createAnswer())
+                        .then(answer => pc.setLocalDescription(answer))
+                        .then(() => {
+                            call.send(JSON.stringify({
+                                type: 'answer',
+                                sdp: pc.localDescription.sdp,
+                                type: 'answer'
+                            }));
+                        });
+                } else if (message.type === 'candidate') {
+                    pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+                }
+            } catch (e) {}
         });
-
+        
+        // Отправка ICE-кандидатов
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                call.send(JSON.stringify({
+                    type: 'candidate',
+                    candidate: event.candidate
+                }));
+            }
+        };
+        
         call.on('close', () => {
             console.log('🔴 Входящий звонок закрыт');
+            pc.close();
             if (isConnected) {
                 disconnectCall();
             }
-        });
-    }
-
-    // ============ ПЕРЕЗАПУСК ЗВОНКА (если нет видео) ============
-    function restartCall(partnerId) {
-        console.log('🔄 Перезапуск звонка с видео...');
-        if (currentCall) {
-            currentCall.close();
-            currentCall = null;
-        }
-        // Пересоздаём стрим
-        updateStream().then(() => {
-            setTimeout(() => {
-                if (localStream && localStream.getVideoTracks().length > 0) {
-                    callPartner(partnerId);
-                }
-            }, 1000);
         });
     }
 
@@ -920,7 +985,7 @@
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
         console.log('💬 Чат будет работать после подключения к собеседнику');
-        console.log('🎥 Если не видно камеру - проверьте консоль (F12)');
+        console.log('🎥 Используется нативный WebRTC');
     }
 
     init();
