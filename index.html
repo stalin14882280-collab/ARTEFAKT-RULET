@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARTEFAKT RULET · видеочат</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0c0e;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #d0f0e8;
+        }
+
+        .container {
+            background: #12181c;
+            border-radius: 56px;
+            padding: 30px 30px 40px;
+            max-width: 900px;
+            width: 100%;
+            border: 1px solid rgba(0, 255, 200, 0.15);
+            box-shadow: 0 0 70px rgba(0, 255, 200, 0.06), inset 0 0 40px rgba(0, 255, 200, 0.02);
+            text-align: center;
+            backdrop-filter: blur(2px);
+        }
+
+        h1 {
+            font-size: 32px;
+            letter-spacing: 8px;
+            font-weight: 300;
+            text-transform: uppercase;
+            color: #b5ffe6;
+            text-shadow: 0 0 30px #00d5b0, 0 0 80px #00887755;
+            margin-bottom: 24px;
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 14px;
+            background: #0a1014;
+            border-radius: 40px;
+            padding: 14px;
+            border: 1px solid #1d3a32;
+            box-shadow: inset 0 0 30px #00000088;
+            margin-bottom: 22px;
+        }
+
+        .video-box {
+            position: relative;
+            background: #141e1e;
+            border-radius: 28px;
+            overflow: hidden;
+            aspect-ratio: 4 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #2a4f44;
+            box-shadow: 0 0 20px rgba(0, 200, 170, 0.05);
+        }
+
+        .video-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #0b1212;
+            transform: scaleX(-1);
+        }
+
+        .video-box .placeholder {
+            color: #3f6a5e;
+            font-size: 18px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-weight: 300;
+            opacity: 0.7;
+            text-shadow: 0 0 20px #00aa8833;
+        }
+
+        .video-box .badge {
+            position: absolute;
+            bottom: 14px;
+            left: 18px;
+            background: #0f1f1bcc;
+            backdrop-filter: blur(6px);
+            padding: 6px 20px;
+            border-radius: 40px;
+            font-size: 13px;
+            letter-spacing: 2px;
+            border: 1px solid #2d6b5a;
+            color: #a0ded0;
+            text-transform: uppercase;
+        }
+
+        .video-box.self {
+            border-color: #2f8f7a;
+        }
+        .video-box.self .badge {
+            border-color: #4fbfa0;
+            color: #b5ffe6;
+        }
+
+        .status-bar {
+            font-size: 22px;
+            letter-spacing: 3px;
+            padding: 12px 0 8px;
+            color: #80cbbc;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .status-bar .dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #2f6f5a;
+            transition: 0.3s;
+        }
+        .status-bar .dot.active {
+            background: #00ffb3;
+            box-shadow: 0 0 30px #00ffb3aa;
+        }
+        .status-bar .dot.searching {
+            background: #ffbb44;
+            box-shadow: 0 0 30px #ffbb4488;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0.4; transform: scale(0.9); }
+        }
+
+        .actions {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 16px 0 8px;
+        }
+
+        .btn {
+            background: transparent;
+            border: 2px solid #2b5f50;
+            color: #b0ffe0;
+            font-size: 22px;
+            padding: 14px 48px;
+            border-radius: 60px;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            font-weight: 300;
+            cursor: pointer;
+            transition: 0.25s;
+            background: #0d1b18;
+            min-width: 180px;
+            box-shadow: 0 0 20px #00aa8822;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #1b4238;
+            border-color: #5fffd0;
+            box-shadow: 0 0 50px #00ffbb33;
+            transform: scale(1.02);
+        }
+        .btn:active:not(:disabled) {
+            transform: scale(0.96);
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            filter: grayscale(0.7);
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn-primary {
+            border-color: #3fbf8f;
+            background: #0f2a22;
+        }
+        .btn-danger {
+            border-color: #8f3f4f;
+            background: #2a141a;
+            color: #ffb0b0;
+        }
+        .btn-danger:hover:not(:disabled) {
+            border-color: #ff6f7f;
+            background: #3f1f28;
+            box-shadow: 0 0 50px #ff336644;
+        }
+
+        .footer {
+            margin-top: 22px;
+            font-size: 13px;
+            letter-spacing: 3px;
+            color: #2d554a;
+            border-top: 1px solid #1a332b;
+            padding-top: 18px;
+        }
+
+        /* адаптив */
+        @media (max-width: 700px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+            .video-box.self {
+                order: 2;
+                max-height: 200px;
+            }
+            .video-box.remote {
+                order: 1;
+            }
+            h1 {
+                font-size: 22px;
+                letter-spacing: 4px;
+            }
+            .btn {
+                font-size: 18px;
+                padding: 12px 28px;
+                min-width: 140px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✦ ARTEFAKT RULET ✦</h1>
+
+        <div class="video-grid">
+            <!-- собеседник (большое) -->
+            <div class="video-box remote" id="remoteBox">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="placeholder" id="remotePlaceholder">⚡ ожидание</div>
+                <div class="badge">СОБЕСЕДНИК</div>
+            </div>
+
+            <!-- своё видео (маленькое) -->
+            <div class="video-box self" id="selfBox">
+                <video id="selfVideo" autoplay playsinline muted></video>
+                <div class="placeholder" id="selfPlaceholder">📷 камера</div>
+                <div class="badge">ВЫ</div>
+            </div>
+        </div>
+
+        <!-- статус -->
+        <div class="status-bar" id="statusBar">
+            <span class="dot" id="statusDot"></span>
+            <span id="statusText">НАЖМИТЕ «НАЧАТЬ»</span>
+        </div>
+
+        <!-- кнопки -->
+        <div class="actions">
+            <button class="btn btn-primary" id="startBtn">▶ НАЧАТЬ</button>
+            <button class="btn btn-danger" id="stopBtn" disabled>⏹ СТОП</button>
+        </div>
+
+        <div class="footer">артефакт · соединение · случайность</div>
+    </div>
+
+    <script>
+        (function() {
+            "use strict";
+
+            // DOM
+            const selfVideo = document.getElementById('selfVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
+            const selfPlaceholder = document.getElementById('selfPlaceholder');
+            const remotePlaceholder = document.getElementById('remotePlaceholder');
+            const statusText = document.getElementById('statusText');
+            const statusDot = document.getElementById('statusDot');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            // Состояние
+            let localStream = null;        // свой поток
+            let isActive = false;          // идёт ли сессия
+            let searchInterval = null;     // таймер имитации поиска
+            let remoteStream = null;       // для симуляции (фейковый поток)
+
+            // ---------- ЗАПРОС РАЗРЕШЕНИЙ ----------
+            async function requestMedia() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+                        audio: true
+                    });
+                    return stream;
+                } catch (err) {
+                    console.warn('Ошибка доступа к медиа:', err);
+                    alert('❌ Нет доступа к камере или микрофону.\nРазреши доступ в браузере и обнови страницу.');
+                    return null;
+                }
+            }
+
+            // ---------- ОТОБРАЖЕНИЕ СВОЕГО ВИДЕО ----------
+            function showSelfVideo(stream) {
+                selfVideo.srcObject = stream;
+                selfVideo.onloadedmetadata = () => {
+                    selfVideo.play().catch(() => {});
+                };
+                selfPlaceholder.style.display = 'none';
+            }
+
+            function hideSelfVideo() {
+                if (selfVideo.srcObject) {
+                    selfVideo.srcObject.getTracks().forEach(t => t.stop());
+                }
+                selfVideo.srcObject = null;
+                selfPlaceholder.style.display = 'block';
+            }
+
+            // ---------- ОТОБРАЖЕНИЕ СОБЕСЕДНИКА (СИМУЛЯЦИЯ) ----------
+            function showRemoteFake() {
+                // Создаём фейковый видео-поток (чёрный квадрат с текстом)
+                // Можно также использовать canvas или просто оставить плейсхолдер.
+                // Сделаем имитацию "собеседник найден" — покажем второй поток из камеры (если есть)
+                // Но для демо лучше просто показать плейсхолдер с анимацией.
+                remotePlaceholder.textContent = '👤 ПОДКЛЮЧЁН';
+                remotePlaceholder.style.color = '#70ddc0';
+                remotePlaceholder.style.textShadow = '0 0 30px #00ffbb55';
+                // Если хотим реальное отображение — можно дублировать свой поток (для теста)
+                // Но чтобы не путать, просто оставляем плейсхолдер.
+                // Можно также добавить canvas с артефактной анимацией.
+            }
+
+            function hideRemoteFake() {
+                remotePlaceholder.textContent = '⚡ ожидание';
+                remotePlaceholder.style.color = '#3f6a5e';
+                remotePlaceholder.style.textShadow = 'none';
+                if (remoteVideo.srcObject) {
+                    remoteVideo.srcObject.getTracks().forEach(t => t.stop());
+                    remoteVideo.srcObject = null;
+                }
+            }
+
+            // ---------- ОБНОВЛЕНИЕ СТАТУСА ----------
+            function setStatus(text, type = 'idle') {
+                statusText.textContent = text;
+                statusDot.className = 'dot';
+                if (type === 'active') statusDot.classList.add('active');
+                else if (type === 'searching') statusDot.classList.add('searching');
+                // idle — ничего не добавляем
+            }
+
+            // ---------- ЗАПУСК ПОИСКА ----------
+            async function startSession() {
+                if (isActive) return;
+
+                // 1. Запрашиваем медиа
+                if (!localStream) {
+                    const stream = await requestMedia();
+                    if (!stream) return;
+                    localStream = stream;
+                    showSelfVideo(stream);
+                }
+
+                // 2. Активируем состояние
+                isActive = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                setStatus('ПОИСК СОБЕСЕДНИКА...', 'searching');
+
+                // 3. Имитация поиска (рандомная задержка 1.5–5 сек)
+                let searchTime = 1500 + Math.random() * 3500;
+                let elapsed = 0;
+                const step = 200;
+
+                if (searchInterval) clearInterval(searchInterval);
+                searchInterval = setInterval(() => {
+                    elapsed += step;
+                    if (elapsed >= searchTime) {
+                        clearInterval(searchInterval);
+                        searchInterval = null;
+                        // Поиск завершён — "соединение установлено"
+                        if (isActive) {
+                            setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+                            showRemoteFake();
+                            // Можно также запустить фейковый "поток" собеседника (если нужно)
+                            // Например, скопировать свой поток для демонстрации
+                            // Но оставим как есть.
+                        }
+                    } else {
+                        // обновляем статус с точками
+                        const dots = '.'.repeat(Math.floor(elapsed / 600) % 4);
+                        setStatus(`ПОИСК${dots}`, 'searching');
+                    }
+                }, step);
+            }
+
+            // ---------- ОСТАНОВКА СЕССИИ ----------
+            function stopSession() {
+                if (!isActive) return;
+
+                isActive = false;
+
+                // Остановить поиск
+                if (searchInterval) {
+                    clearInterval(searchInterval);
+                    searchInterval = null;
+                }
+
+                // Отключить "собеседника"
+                hideRemoteFake();
+
+                // Отключить своё видео (но не освобождаем поток полностью, чтобы при повторном старте не запрашивать снова)
+                // Однако можно оставить видео включённым, но плейсхолдер не показывать — 
+                // покажем плейсхолдер, если поток остановлен.
+                // Лучше скрыть видео, но сохранить поток для повторного использования.
+                if (selfVideo.srcObject) {
+                    // Не останавливаем треки, просто скрываем картинку (или оставляем)
+                    // Но для чистоты — скроем плейсхолдер, видео оставим.
+                    // Можно оставить как есть.
+                }
+
+                setStatus('⏹ ОСТАНОВЛЕНО', 'idle');
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+
+                // Сбрасываем плейсхолдер собеседника
+                remotePlaceholder.textContent = '⚡ ожидание';
+                remotePlaceholder.style.color = '#3f6a5e';
+                remotePlaceholder.style.textShadow = 'none';
+            }
+
+            // ---------- ПОЛНАЯ ОСТАНОВКА (освобождение ресурсов) ----------
+            function fullStop() {
+                stopSession();
+                // Освобождаем медиа-потоки
+                if (localStream) {
+                    localStream.getTracks().forEach(t => t.stop());
+                    localStream = null;
+                }
+                hideSelfVideo();
+                hideRemoteFake();
+                setStatus('ГОТОВ', 'idle');
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+
+            // ---------- ИНИЦИАЛИЗАЦИЯ ----------
+            function init() {
+                // При загрузке запрашиваем разрешения, но не включаем видео
+                // Просто проверяем доступ
+                setStatus('НАЖМИТЕ «НАЧАТЬ»', 'idle');
+
+                // При клике на "Начать"
+                startBtn.addEventListener('click', startSession);
+
+                // При клике на "Стоп"
+                stopBtn.addEventListener('click', stopSession);
+
+                // Дополнительно: если пользователь закроет вкладку — освободить ресурсы
+                window.addEventListener('beforeunload', () => {
+                    if (localStream) {
+                        localStream.getTracks().forEach(t => t.stop());
+                    }
+                });
+
+                // Для теста: разрешение можно запросить заранее (опционально)
+                // Но лучше по клику, чтобы не пугать пользователя.
+            }
+
+            init();
+        })();
+    </script>
+</body>
+</html>
