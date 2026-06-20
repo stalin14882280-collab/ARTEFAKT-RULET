@@ -17,6 +17,10 @@
     const serverText = document.getElementById('serverText');
     const onlineCount = document.getElementById('onlineCount');
     const partnerIdElement = document.getElementById('partnerId');
+    const modeVideo = document.getElementById('modeVideo');
+    const modeAudio = document.getElementById('modeAudio');
+    const modeHint = document.getElementById('modeHint');
+    const selfBadge = document.getElementById('selfBadge');
 
     // Состояние
     let localStream = null;
@@ -29,13 +33,14 @@
     let myPeerId = null;
     let isSearching = false;
     let searchTimeout = null;
-    const SEARCH_TIMEOUT = 7000; // 7 секунд
+    let currentMode = 'video'; // 'video' или 'audio'
+    const SEARCH_TIMEOUT = 7000;
 
     // ============ КОНФИГУРАЦИЯ ============
     // 🔥 ДЛЯ ПРОДАКШЕНА НА RENDER:
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
     
-    // 🔥 ДЛЯ ЛОКАЛЬНОЙ РАЗРАБОТКИ (закомментируй строку выше и раскомментируй эту):
+    // 🔥 ДЛЯ ЛОКАЛЬНОЙ РАЗРАБОТКИ:
     // const SERVER_URL = 'http://localhost:3000';
 
     const PEER_CONFIG = {
@@ -55,6 +60,46 @@
             ]
         }
     };
+
+    // ============ ВЫБОР РЕЖИМА ============
+    function selectMode(mode) {
+        currentMode = mode;
+        
+        // Обновляем кнопки
+        modeVideo.classList.toggle('active', mode === 'video');
+        modeAudio.classList.toggle('active', mode === 'audio');
+        
+        // Обновляем подсказку
+        if (mode === 'video') {
+            modeHint.textContent = '⚠️ Браузер запросит доступ к камере и микрофону';
+            selfBadge.textContent = 'ВЫ 📹';
+        } else {
+            modeHint.textContent = '🎧 Только аудио (камера не нужна)';
+            selfBadge.textContent = 'ВЫ 🎧';
+        }
+        
+        // Если разрешения уже были получены, обновляем поток
+        if (isPermissionGranted && localStream) {
+            updateStream();
+        }
+    }
+
+    modeVideo.addEventListener('click', () => selectMode('video'));
+    modeAudio.addEventListener('click', () => selectMode('audio'));
+
+    // ============ ОБНОВЛЕНИЕ ПОТОКА ============
+    async function updateStream() {
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+            localStream = null;
+        }
+        
+        const stream = await requestMedia();
+        if (stream) {
+            localStream = stream;
+            showSelfVideo(stream);
+        }
+    }
 
     // ============ ПОДКЛЮЧЕНИЕ К SOCKET.IO ============
     function connectToServer() {
@@ -98,7 +143,6 @@
         socket.on('partner-found', (data) => {
             console.log('🎯 Найден собеседник:', data.partnerId);
             
-            // Очищаем таймаут поиска
             if (searchTimeout) {
                 clearTimeout(searchTimeout);
                 searchTimeout = null;
@@ -220,16 +264,13 @@
         isActive = true;
         setStatus('🔍 ПОИСК... 7с', 'searching');
         
-        // Очищаем предыдущий таймаут
         if (searchTimeout) {
             clearTimeout(searchTimeout);
             searchTimeout = null;
         }
         
-        // Запускаем таймаут на 7 секунд
         searchTimeout = setTimeout(() => {
             if (isSearching) {
-                // Поиск не удался
                 isSearching = false;
                 isActive = false;
                 setStatus('⏱️ ВРЕМЯ ВЫШЛО', 'idle');
@@ -283,7 +324,7 @@
     async function startSession() {
         if (isActive || isSearching) return;
         if (!isPermissionGranted || !localStream) {
-            alert('Сначала разреши доступ к камере и микрофону');
+            alert('Сначала активируй доступ к камере/микрофону');
             return;
         }
         if (!peer || peer.destroyed) {
@@ -425,22 +466,37 @@
     // ============ РАЗРЕШЕНИЯ ============
     async function requestMedia() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 },
-                    facingMode: 'user'
-                },
+            const constraints = {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true
                 }
-            });
+            };
+            
+            // Если режим "с камерой" — добавляем видео
+            if (currentMode === 'video') {
+                constraints.video = {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user'
+                };
+            }
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             return stream;
         } catch (err) {
             console.warn('Ошибка доступа к медиа:', err);
-            alert('❌ Нет доступа к камере или микрофону.\nРазреши доступ в браузере.');
+            
+            let message = '❌ Нет доступа к ';
+            if (currentMode === 'video') {
+                message += 'камере или микрофону.';
+            } else {
+                message += 'микрофону.';
+            }
+            message += '\nРазреши доступ в браузере.';
+            
+            alert(message);
             return null;
         }
     }
@@ -469,6 +525,9 @@
 
     // ============ ИНИЦИАЛИЗАЦИЯ ============
     function init() {
+        // Выбираем режим по умолчанию
+        selectMode('video');
+        
         permissionOverlay.classList.remove('hidden');
         startBtn.disabled = true;
         
