@@ -54,9 +54,8 @@
 
     // ============ КОНФИГУРАЦИЯ ============
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
-    // const SERVER_URL = 'http://localhost:3000';
 
-    // ============ УЛУЧШЕННАЯ КОНФИГУРАЦИЯ PEERJS ============
+    // ============ НАСТРОЙКА PEERJS С ПРИНУДИТЕЛЬНЫМ МЕДИА ============
     const PEER_CONFIG = {
         host: '0.peerjs.com',
         port: 443,
@@ -72,11 +71,6 @@
                 { urls: 'stun:stun4.l.google.com:19302' },
                 {
                     urls: 'turn:relay1.expressturn.com:3478',
-                    username: 'efZRVVVFCWXWUOQCUJ',
-                    credential: 'sZ6BVVUYSXJEVNKY'
-                },
-                {
-                    urls: 'turn:relay2.expressturn.com:3478',
                     username: 'efZRVVVFCWXWUOQCUJ',
                     credential: 'sZ6BVVUYSXJEVNKY'
                 }
@@ -285,7 +279,7 @@
         });
     }
 
-    // ============ ЗВОНОК ПАРТНЁРУ (С ПРИНУДИТЕЛЬНЫМ ВИДЕО) ============
+    // ============ ЗВОНОК ПАРТНЁРУ ============
     function callPartner(partnerId) {
         if (!localStream) {
             console.error('❌ Нет локального потока');
@@ -298,38 +292,43 @@
         
         setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
         
-        // ПРИНУДИТЕЛЬНО включаем видео в SDP
-        const options = {
-            stream: localStream,
+        // ПРИНУДИТЕЛЬНО передаём поток
+        const call = peer.call(partnerId, localStream, {
             video: true,
-            audio: true
-        };
+            audio: true,
+            metadata: { type: 'videochat' }
+        });
         
-        const call = peer.call(partnerId, localStream, options);
         currentCall = call;
 
         call.on('stream', (remoteStream) => {
             console.log('✅ Стрим получен от:', partnerId);
-            console.log(`📹 Видео-треков в стриме: ${remoteStream.getVideoTracks().length}`);
-            console.log(`🎧 Аудио-треков в стриме: ${remoteStream.getAudioTracks().length}`);
+            console.log(`📹 Видео-треков: ${remoteStream.getVideoTracks().length}`);
+            console.log(`🎧 Аудио-треков: ${remoteStream.getAudioTracks().length}`);
             
-            showRemoteVideo(remoteStream);
-            isConnected = true;
-            isSearching = false;
-            setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            complainBtn.disabled = true;
-            complainBtn.classList.remove('active');
-            partnerIdElement.textContent = partnerId;
-            partnerIdElement.className = 'id connected';
-            currentPartnerId = partnerId;
-            
-            enableChat(true);
-            startTimer();
-            timerDisplay.classList.add('active');
-            playSound('connect');
-            clearChat();
+            if (remoteStream.getVideoTracks().length > 0) {
+                showRemoteVideo(remoteStream);
+                isConnected = true;
+                isSearching = false;
+                setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                complainBtn.disabled = true;
+                complainBtn.classList.remove('active');
+                partnerIdElement.textContent = partnerId;
+                partnerIdElement.className = 'id connected';
+                currentPartnerId = partnerId;
+                
+                enableChat(true);
+                startTimer();
+                timerDisplay.classList.add('active');
+                playSound('connect');
+                clearChat();
+            } else {
+                console.warn('⚠️ Нет видео-треков в стриме!');
+                // Пробуем пересоздать стрим
+                restartCall(partnerId);
+            }
         });
 
         call.on('close', () => {
@@ -340,7 +339,7 @@
         });
     }
 
-    // ============ ПРИНЯТЬ ЗВОНОК (С ПРИНУДИТЕЛЬНЫМ ВИДЕО) ============
+    // ============ ПРИНЯТЬ ЗВОНОК ============
     function acceptCall(call) {
         if (!localStream) {
             call.close();
@@ -355,14 +354,12 @@
         currentCall = call;
         currentPartnerId = call.peer;
         
-        // ПРИНУДИТЕЛЬНО отвечаем с видео
-        const options = {
-            stream: localStream,
+        // ПРИНУДИТЕЛЬНО отвечаем с потоком
+        call.answer(localStream, {
             video: true,
             audio: true
-        };
+        });
         
-        call.answer(localStream, options);
         partnerIdElement.textContent = call.peer;
         partnerIdElement.className = 'id connected';
 
@@ -371,21 +368,25 @@
             console.log(`📹 Видео-треков: ${remoteStream.getVideoTracks().length}`);
             console.log(`🎧 Аудио-треков: ${remoteStream.getAudioTracks().length}`);
             
-            showRemoteVideo(remoteStream);
-            isConnected = true;
-            isSearching = false;
-            setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            complainBtn.disabled = true;
-            complainBtn.classList.remove('active');
-            currentPartnerId = call.peer;
-            
-            enableChat(true);
-            startTimer();
-            timerDisplay.classList.add('active');
-            playSound('connect');
-            clearChat();
+            if (remoteStream.getVideoTracks().length > 0) {
+                showRemoteVideo(remoteStream);
+                isConnected = true;
+                isSearching = false;
+                setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                complainBtn.disabled = true;
+                complainBtn.classList.remove('active');
+                currentPartnerId = call.peer;
+                
+                enableChat(true);
+                startTimer();
+                timerDisplay.classList.add('active');
+                playSound('connect');
+                clearChat();
+            } else {
+                console.warn('⚠️ Нет видео-треков в стриме!');
+            }
         });
 
         call.on('close', () => {
@@ -393,6 +394,23 @@
             if (isConnected) {
                 disconnectCall();
             }
+        });
+    }
+
+    // ============ ПЕРЕЗАПУСК ЗВОНКА (если нет видео) ============
+    function restartCall(partnerId) {
+        console.log('🔄 Перезапуск звонка с видео...');
+        if (currentCall) {
+            currentCall.close();
+            currentCall = null;
+        }
+        // Пересоздаём стрим
+        updateStream().then(() => {
+            setTimeout(() => {
+                if (localStream && localStream.getVideoTracks().length > 0) {
+                    callPartner(partnerId);
+                }
+            }, 1000);
         });
     }
 
@@ -710,7 +728,6 @@
     }
 
     function showRemoteVideo(stream) {
-        // Проверяем, есть ли видео-треки
         const videoTracks = stream.getVideoTracks();
         console.log(`📹 Видео-треков в стриме: ${videoTracks.length}`);
         
@@ -719,13 +736,13 @@
             remotePlaceholder.textContent = '🎧 Только аудио';
             remotePlaceholder.style.color = '#ffbb44';
             remotePlaceholder.style.textShadow = '0 0 30px #ffbb4455';
-        } else {
-            remotePlaceholder.style.display = 'none';
+            remotePlaceholder.style.display = 'block';
+            return;
         }
         
+        remotePlaceholder.style.display = 'none';
         remoteVideo.srcObject = stream;
         
-        // Пробуем воспроизвести
         remoteVideo.onloadedmetadata = () => {
             remoteVideo.play().catch(() => {
                 console.warn('⚠️ Не удалось воспроизвести видео собеседника');
@@ -733,7 +750,6 @@
             console.log('📷 Видео собеседника загружено');
         };
         
-        // Если видео не начинает играть, пробуем принудительно
         setTimeout(() => {
             if (remoteVideo.paused) {
                 remoteVideo.play().catch(() => {});
