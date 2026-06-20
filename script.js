@@ -42,7 +42,7 @@
     let isSearching = false;
     let searchTimeout = null;
     let currentMode = 'video';
-    let currentPartnerId = null; // Храним ID собеседника
+    let currentPartnerId = null;
     const SEARCH_TIMEOUT = 7000;
 
     // Таймер общения
@@ -580,6 +580,7 @@
         placeholder.className = 'chat-placeholder';
         placeholder.textContent = 'Начни общение...';
         chatMessages.appendChild(placeholder);
+        console.log('🧹 Чат очищен');
     }
 
     function enableChat(enabled) {
@@ -590,10 +591,12 @@
             chatStatus.className = 'chat-status active';
             chatInput.placeholder = 'Напиши сообщение...';
             chatInput.focus();
+            console.log('💬 Чат включён');
         } else {
             chatStatus.textContent = '⛔ Не в чате';
             chatStatus.className = 'chat-status';
             chatInput.placeholder = 'Чат недоступен';
+            console.log('💬 Чат выключен');
         }
     }
 
@@ -610,13 +613,14 @@
         if (socket && socket.connected) {
             socket.emit('chat-message', {
                 to: currentPartnerId,
-                from: myPeerId,
                 text: text,
                 time: getCurrentTime()
             });
             console.log('✅ Сообщение отправлено через Socket.IO');
         } else {
             console.warn('❌ Socket.IO не подключён');
+            showNotification('❌ Ошибка', 'Нет подключения к серверу');
+            return;
         }
         
         // Показываем у себя
@@ -637,6 +641,7 @@
         msg.innerHTML = `${text} <span class="msg-time">${time || getCurrentTime()}</span>`;
         chatMessages.appendChild(msg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+        console.log(`💬 Добавлено сообщение (${type}): ${text}`);
     }
 
     function getCurrentTime() {
