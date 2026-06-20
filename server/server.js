@@ -68,15 +68,17 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ============ ЧАТ ============
+    // ============ ЧАТ: ОТПРАВКА СООБЩЕНИЯ ============
     socket.on('chat-message', (data) => {
         const fromPeerId = socket.data.peerId;
         const { to, text, time } = data;
         
         console.log(`💬 Чат: ${fromPeerId} -> ${to}: "${text}"`);
         
+        // Находим сокет получателя
         const targetSocketId = onlineUsers.get(to);
         if (targetSocketId) {
+            // Отправляем сообщение получателю
             io.to(targetSocketId).emit('chat-message', {
                 from: fromPeerId,
                 text: text,
