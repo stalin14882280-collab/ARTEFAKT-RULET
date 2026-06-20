@@ -10,19 +10,25 @@
     <div class="container">
         <h1>✦ ARTEFAKT RULET ✦</h1>
 
-        <!-- Оверлей для запроса разрешений -->
+        <!-- Оверлей разрешений -->
         <div class="permission-overlay" id="permissionOverlay">
             <div class="permission-card">
                 <div class="permission-icon">🎙️</div>
-                <h2>Разреши доступ</h2>
-                <p>Для работы видеочата нужны камера и микрофон</p>
+                <h2>✦ АРТЕФАКТ АКТИВАЦИЯ ✦</h2>
+                <p>Для входа в измерение нужны камера и голос</p>
                 <button class="btn btn-primary" id="permissionBtn">
-                    ▶ РАЗРЕШИТЬ
+                    ▶ АКТИВИРОВАТЬ
                 </button>
                 <div class="permission-hint">
                     <span>⚠️ Браузер запросит доступ</span>
                 </div>
             </div>
+        </div>
+
+        <!-- Статус подключения к серверу -->
+        <div class="server-status" id="serverStatus">
+            <span class="status-dot" id="serverDot"></span>
+            <span id="serverText">Подключение к серверу...</span>
         </div>
 
         <div class="video-grid">
@@ -49,9 +55,16 @@
             <button class="btn btn-danger" id="stopBtn" disabled>⏹ СТОП</button>
         </div>
 
+        <!-- Счётчик онлайн -->
+        <div class="online-counter" id="onlineCounter">
+            👥 Онлайн: <span id="onlineCount">0</span>
+        </div>
+
         <div class="footer">артефакт · соединение · случайность</div>
     </div>
 
+    <!-- Подключаем PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
