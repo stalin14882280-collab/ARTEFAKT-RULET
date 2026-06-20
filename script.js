@@ -42,6 +42,7 @@
     let isSearching = false;
     let searchTimeout = null;
     let currentMode = 'video';
+    let currentPartnerId = null; // Храним ID собеседника
     const SEARCH_TIMEOUT = 7000;
 
     // Таймер общения
@@ -220,6 +221,7 @@
                 clearTimeout(searchTimeout);
                 searchTimeout = null;
             }
+            currentPartnerId = data.partnerId;
             callPartner(data.partnerId);
         });
 
@@ -229,10 +231,14 @@
             serverDot.className = 'status-dot';
         });
 
+        // ============ ПОЛУЧЕНИЕ СООБЩЕНИЙ ============
         socket.on('chat-message', (data) => {
-            console.log('💬 Сообщение от', data.from, ':', data.text);
-            addMessage(data.text, 'other', data.time);
-            playSound('message');
+            console.log('💬 Получено сообщение от', data.from, ':', data.text);
+            // Проверяем, что сообщение от текущего собеседника
+            if (data.from === currentPartnerId || data.from === partnerIdElement.textContent) {
+                addMessage(data.text, 'other', data.time);
+                playSound('message');
+            }
         });
     }
 
@@ -258,6 +264,7 @@
                 call.close();
                 return;
             }
+            currentPartnerId = call.peer;
             acceptCall(call);
         });
 
@@ -294,11 +301,15 @@
             complainBtn.classList.remove('active');
             partnerIdElement.textContent = partnerId;
             partnerIdElement.className = 'id connected';
+            currentPartnerId = partnerId;
             
             enableChat(true);
             startTimer();
             timerDisplay.classList.add('active');
             playSound('connect');
+            
+            // Очищаем чат при новом соединении
+            clearChat();
         });
 
         call.on('close', () => {
@@ -318,6 +329,7 @@
 
         isActive = true;
         currentCall = call;
+        currentPartnerId = call.peer;
         
         call.answer(localStream);
         partnerIdElement.textContent = call.peer;
@@ -333,11 +345,15 @@
             stopBtn.disabled = false;
             complainBtn.disabled = true;
             complainBtn.classList.remove('active');
+            currentPartnerId = call.peer;
             
             enableChat(true);
             startTimer();
             timerDisplay.classList.add('active');
             playSound('connect');
+            
+            // Очищаем чат при новом соединении
+            clearChat();
         });
 
         call.on('close', () => {
@@ -411,15 +427,20 @@
         startBtn.disabled = false;
         stopBtn.disabled = true;
         
-        // АКТИВИРУЕМ КНОПКУ ЖАЛОБЫ!
+        // Активируем кнопку жалобы
         complainBtn.disabled = false;
         complainBtn.classList.add('active');
         
         partnerIdElement.textContent = '—';
         partnerIdElement.className = 'id';
+        currentPartnerId = null;
         
+        // Отключаем чат
         enableChat(false);
         chatStatus.textContent = '⛔ Не в чате';
+        
+        // Очищаем чат после разговора
+        clearChat();
         
         stopTimer();
         timerDisplay.classList.remove('active');
@@ -450,6 +471,9 @@
         complainBtn.disabled = true;
         complainBtn.classList.remove('active');
         
+        // Очищаем чат перед новым поиском
+        clearChat();
+        
         findPartner();
     }
 
@@ -474,6 +498,7 @@
             stopBtn.disabled = true;
             complainBtn.disabled = true;
             complainBtn.classList.remove('active');
+            clearChat();
             return;
         }
         
@@ -489,7 +514,6 @@
         
         playSound('complain');
         
-        // Создаём модалку
         const overlay = document.createElement('div');
         overlay.className = 'complain-modal-overlay show';
         overlay.innerHTML = `
@@ -515,7 +539,6 @@
         
         let selectedReason = null;
         
-        // Выбор причины
         overlay.querySelectorAll('.complain-reason').forEach(el => {
             el.addEventListener('click', () => {
                 overlay.querySelectorAll('.complain-reason').forEach(r => r.classList.remove('selected'));
@@ -525,19 +548,16 @@
             });
         });
         
-        // Отмена
         document.getElementById('complainCancel').addEventListener('click', () => {
             overlay.remove();
         });
         
-        // Отправка
         document.getElementById('complainSend').addEventListener('click', () => {
             if (!selectedReason) return;
             
             const partnerId = partnerIdElement.textContent;
             console.log(`📨 Жалоба на ${partnerId}: ${selectedReason}`);
             
-            // Показываем уведомление
             showNotification('✅ Жалоба отправлена', 'Мы рассмотрим вашу жалобу в ближайшее время');
             playSound('message');
             
@@ -546,7 +566,6 @@
             complainBtn.classList.remove('active');
         });
         
-        // Клик вне модалки
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 overlay.remove();
@@ -555,6 +574,14 @@
     }
 
     // ============ ЧАТ ============
+    function clearChat() {
+        chatMessages.innerHTML = '';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'chat-placeholder';
+        placeholder.textContent = 'Начни общение...';
+        chatMessages.appendChild(placeholder);
+    }
+
     function enableChat(enabled) {
         chatInput.disabled = !enabled;
         chatSendBtn.disabled = !enabled;
@@ -572,22 +599,34 @@
 
     function sendMessage() {
         const text = chatInput.value.trim();
-        if (!text || !isConnected) return;
+        if (!text || !isConnected || !currentPartnerId) {
+            console.warn('❌ Нельзя отправить сообщение:', { text, isConnected, currentPartnerId });
+            return;
+        }
         
+        console.log(`📤 Отправка сообщения ${currentPartnerId}: ${text}`);
+        
+        // Отправляем через Socket.IO
         if (socket && socket.connected) {
             socket.emit('chat-message', {
-                to: partnerIdElement.textContent,
+                to: currentPartnerId,
+                from: myPeerId,
                 text: text,
                 time: getCurrentTime()
             });
+            console.log('✅ Сообщение отправлено через Socket.IO');
+        } else {
+            console.warn('❌ Socket.IO не подключён');
         }
         
+        // Показываем у себя
         addMessage(text, 'self', getCurrentTime());
         chatInput.value = '';
         playSound('message');
     }
 
     function addMessage(text, type, time) {
+        // Убираем плейсхолдер
         const placeholder = chatMessages.querySelector('.chat-placeholder');
         if (placeholder) {
             placeholder.remove();
@@ -807,6 +846,7 @@
 
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
+        console.log('💬 Чат будет работать после подключения к собеседнику');
     }
 
     init();
