@@ -56,21 +56,45 @@
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
     // const SERVER_URL = 'http://localhost:3000';
 
+    // ============ УЛУЧШЕННАЯ КОНФИГУРАЦИЯ PEERJS ============
     const PEER_CONFIG = {
         host: '0.peerjs.com',
         port: 443,
         path: '/',
         secure: true,
+        debug: 3, // Включаем отладку
         config: {
             iceServers: [
+                // Google STUN серверы
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                
+                // STUN серверы
+                { urls: 'stun:stun.ekiga.net' },
+                { urls: 'stun:stun.ideasip.com' },
+                { urls: 'stun:stun.iptel.org' },
+                { urls: 'stun:stun.rixtelecom.se' },
+                { urls: 'stun:stun.schlund.de' },
+                
+                // TURN серверы (для обхода NAT)
                 {
                     urls: 'turn:relay1.expressturn.com:3478',
                     username: 'efZRVVVFCWXWUOQCUJ',
                     credential: 'sZ6BVVUYSXJEVNKY'
+                },
+                {
+                    urls: 'turn:relay2.expressturn.com:3478',
+                    username: 'efZRVVVFCWXWUOQCUJ',
+                    credential: 'sZ6BVVUYSXJEVNKY'
                 }
-            ]
+            ],
+            // Улучшаем соединение
+            sdpSemantics: 'unified-plan',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
         }
     };
 
@@ -231,10 +255,8 @@
             serverDot.className = 'status-dot';
         });
 
-        // ============ ПОЛУЧЕНИЕ СООБЩЕНИЙ ============
         socket.on('chat-message', (data) => {
             console.log('💬 Получено сообщение от', data.from, ':', data.text);
-            // Проверяем, что сообщение от текущего собеседника
             if (data.from === currentPartnerId || data.from === partnerIdElement.textContent) {
                 addMessage(data.text, 'other', data.time);
                 playSound('message');
@@ -256,6 +278,13 @@
 
         peer.on('error', (err) => {
             console.error('❌ Ошибка PeerJS:', err);
+            // Если ошибка связана с TURN, пробуем переподключиться
+            if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
+                setTimeout(() => {
+                    console.log('🔄 Переподключение к PeerJS...');
+                    connectToPeerServer();
+                }, 3000);
+            }
         });
 
         peer.on('call', (call) => {
@@ -286,11 +315,19 @@
         console.log(`📞 Звоним ${partnerId}...`);
         setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
         
+        // Убеждаемся, что поток содержит видео
+        const videoTracks = localStream.getVideoTracks();
+        const audioTracks = localStream.getAudioTracks();
+        console.log(`🎥 Видео-треков: ${videoTracks.length}, Аудио-треков: ${audioTracks.length}`);
+        
         const call = peer.call(partnerId, localStream);
         currentCall = call;
 
         call.on('stream', (remoteStream) => {
             console.log('✅ Стрим получен от:', partnerId);
+            console.log(`📹 Видео-треков в стриме: ${remoteStream.getVideoTracks().length}`);
+            console.log(`🎧 Аудио-треков в стриме: ${remoteStream.getAudioTracks().length}`);
+            
             showRemoteVideo(remoteStream);
             isConnected = true;
             isSearching = false;
@@ -307,8 +344,6 @@
             startTimer();
             timerDisplay.classList.add('active');
             playSound('connect');
-            
-            // Очищаем чат при новом соединении
             clearChat();
         });
 
@@ -327,16 +362,21 @@
             return;
         }
 
+        console.log('📞 Принимаем входящий звонок от:', call.peer);
         isActive = true;
         currentCall = call;
         currentPartnerId = call.peer;
         
+        // Отвечаем с потоком
         call.answer(localStream);
         partnerIdElement.textContent = call.peer;
         partnerIdElement.className = 'id connected';
 
         call.on('stream', (remoteStream) => {
             console.log('✅ Входящий стрим от:', call.peer);
+            console.log(`📹 Видео-треков: ${remoteStream.getVideoTracks().length}`);
+            console.log(`🎧 Аудио-треков: ${remoteStream.getAudioTracks().length}`);
+            
             showRemoteVideo(remoteStream);
             isConnected = true;
             isSearching = false;
@@ -351,8 +391,6 @@
             startTimer();
             timerDisplay.classList.add('active');
             playSound('connect');
-            
-            // Очищаем чат при новом соединении
             clearChat();
         });
 
@@ -427,7 +465,6 @@
         startBtn.disabled = false;
         stopBtn.disabled = true;
         
-        // Активируем кнопку жалобы
         complainBtn.disabled = false;
         complainBtn.classList.add('active');
         
@@ -435,11 +472,8 @@
         partnerIdElement.className = 'id';
         currentPartnerId = null;
         
-        // Отключаем чат
         enableChat(false);
         chatStatus.textContent = '⛔ Не в чате';
-        
-        // Очищаем чат после разговора
         clearChat();
         
         stopTimer();
@@ -467,13 +501,9 @@
             return;
         }
 
-        // Деактивируем кнопку жалобы при новом поиске
         complainBtn.disabled = true;
         complainBtn.classList.remove('active');
-        
-        // Очищаем чат перед новым поиском
         clearChat();
-        
         findPartner();
     }
 
@@ -609,7 +639,6 @@
         
         console.log(`📤 Отправка сообщения ${currentPartnerId}: ${text}`);
         
-        // Отправляем через Socket.IO
         if (socket && socket.connected) {
             socket.emit('chat-message', {
                 to: currentPartnerId,
@@ -623,14 +652,12 @@
             return;
         }
         
-        // Показываем у себя
         addMessage(text, 'self', getCurrentTime());
         chatInput.value = '';
         playSound('message');
     }
 
     function addMessage(text, type, time) {
-        // Убираем плейсхолдер
         const placeholder = chatMessages.querySelector('.chat-placeholder');
         if (placeholder) {
             placeholder.remove();
@@ -685,14 +712,35 @@
             selfVideo.play().catch(() => {});
         };
         selfPlaceholder.style.display = 'none';
+        console.log('📷 Своё видео отображается');
     }
 
     function showRemoteVideo(stream) {
+        // Проверяем, есть ли видео-треки
+        const videoTracks = stream.getVideoTracks();
+        if (videoTracks.length === 0) {
+            console.warn('⚠️ В стриме нет видео-треков!');
+            remotePlaceholder.textContent = '🎧 Только аудио';
+            remotePlaceholder.style.color = '#ffbb44';
+            remotePlaceholder.style.textShadow = '0 0 30px #ffbb4455';
+        } else {
+            remotePlaceholder.style.display = 'none';
+        }
+        
         remoteVideo.srcObject = stream;
         remoteVideo.onloadedmetadata = () => {
-            remoteVideo.play().catch(() => {});
+            remoteVideo.play().catch(() => {
+                console.warn('⚠️ Не удалось воспроизвести видео собеседника');
+            });
+            console.log('📷 Видео собеседника загружено');
         };
-        remotePlaceholder.style.display = 'none';
+        
+        // Если видео не начинает играть, пробуем принудительно
+        setTimeout(() => {
+            if (remoteVideo.paused) {
+                remoteVideo.play().catch(() => {});
+            }
+        }, 1000);
     }
 
     function hideRemoteVideo() {
@@ -704,6 +752,7 @@
         remotePlaceholder.textContent = '⚡ ожидание';
         remotePlaceholder.style.color = '#3f6a5e';
         remotePlaceholder.style.textShadow = 'none';
+        console.log('📷 Видео собеседника скрыто');
     }
 
     // ============ СТАТУС ============
@@ -765,7 +814,12 @@
                 };
             }
             
+            console.log('📷 Запрос медиа:', constraints);
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('✅ Медиа получено:', {
+                video: stream.getVideoTracks().length,
+                audio: stream.getAudioTracks().length
+            });
             return stream;
         } catch (err) {
             console.warn('Ошибка доступа к медиа:', err);
@@ -852,6 +906,7 @@
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
         console.log('💬 Чат будет работать после подключения к собеседнику');
+        console.log('🎥 Если не видно камеру, проверьте консоль (F12)');
     }
 
     init();
