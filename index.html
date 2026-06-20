@@ -10,15 +10,28 @@
     <div class="container">
         <h1>✦ ARTEFAKT RULET ✦</h1>
 
+        <!-- Оверлей для запроса разрешений -->
+        <div class="permission-overlay" id="permissionOverlay">
+            <div class="permission-card">
+                <div class="permission-icon">🎙️</div>
+                <h2>Разреши доступ</h2>
+                <p>Для работы видеочата нужны камера и микрофон</p>
+                <button class="btn btn-primary" id="permissionBtn">
+                    ▶ РАЗРЕШИТЬ
+                </button>
+                <div class="permission-hint">
+                    <span>⚠️ Браузер запросит доступ</span>
+                </div>
+            </div>
+        </div>
+
         <div class="video-grid">
-            <!-- собеседник (большое) -->
             <div class="video-box remote" id="remoteBox">
                 <video id="remoteVideo" autoplay playsinline></video>
                 <div class="placeholder" id="remotePlaceholder">⚡ ожидание</div>
                 <div class="badge">СОБЕСЕДНИК</div>
             </div>
 
-            <!-- своё видео (маленькое) -->
             <div class="video-box self" id="selfBox">
                 <video id="selfVideo" autoplay playsinline muted></video>
                 <div class="placeholder" id="selfPlaceholder">📷 камера</div>
@@ -26,15 +39,13 @@
             </div>
         </div>
 
-        <!-- статус -->
         <div class="status-bar" id="statusBar">
             <span class="dot" id="statusDot"></span>
             <span id="statusText">НАЖМИТЕ «НАЧАТЬ»</span>
         </div>
 
-        <!-- кнопки -->
         <div class="actions">
-            <button class="btn btn-primary" id="startBtn">▶ НАЧАТЬ</button>
+            <button class="btn btn-primary" id="startBtn" disabled>▶ НАЧАТЬ</button>
             <button class="btn btn-danger" id="stopBtn" disabled>⏹ СТОП</button>
         </div>
 
