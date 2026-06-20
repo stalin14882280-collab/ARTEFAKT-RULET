@@ -10,12 +10,15 @@
     const statusDot = document.getElementById('statusDot');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const permissionOverlay = document.getElementById('permissionOverlay');
+    const permissionBtn = document.getElementById('permissionBtn');
 
     // Состояние
     let localStream = null;
     let isActive = false;
     let searchInterval = null;
     let isConnected = false;
+    let isPermissionGranted = false;
 
     // ---------- ЗАПРОС РАЗРЕШЕНИЙ ----------
     async function requestMedia() {
@@ -32,10 +35,10 @@
         } catch (err) {
             console.warn('Ошибка доступа к медиа:', err);
             
-            // Проверяем, какая именно ошибка
             let message = '❌ Нет доступа к камере или микрофону.\n';
             if (err.name === 'NotAllowedError') {
-                message += 'Ты запретил доступ в браузере. Разреши и обнови страницу.';
+                message += 'Ты запретил доступ в браузере.\n';
+                message += 'Нажми на 🔒 в адресной строке и разреши доступ.';
             } else if (err.name === 'NotFoundError') {
                 message += 'Камера или микрофон не найдены.';
             } else {
@@ -44,6 +47,77 @@
             
             alert(message);
             return null;
+        }
+    }
+
+    // ---------- ПРОВЕРКА РАЗРЕШЕНИЙ ----------
+    async function checkPermissions() {
+        try {
+            // Проверяем, есть ли уже разрешения
+            const videoPermission = await navigator.permissions.query({ name: 'camera' });
+            const audioPermission = await navigator.permissions.query({ name: 'microphone' });
+            
+            if (videoPermission.state === 'granted' && audioPermission.state === 'granted') {
+                // Разрешения уже есть — сразу запрашиваем поток
+                return await requestMedia();
+            }
+            
+            return null;
+        } catch (e) {
+            // Если API недоступен (старые браузеры)
+            return null;
+        }
+    }
+
+    // ---------- АВТОМАТИЧЕСКИЙ ЗАПРОС ПРИ ЗАГРУЗКЕ ----------
+    async function autoRequestPermission() {
+        try {
+            // Сначала проверяем, может разрешения уже есть
+            const stream = await checkPermissions();
+            if (stream) {
+                // Ура! Разрешения уже были
+                localStream = stream;
+                showSelfVideo(stream);
+                isPermissionGranted = true;
+                permissionOverlay.classList.add('hidden');
+                startBtn.disabled = false;
+                setStatus('ГОТОВ К ПОИСКУ', 'idle');
+                console.log('✅ Разрешения уже были, поток получен');
+                return;
+            }
+        } catch (e) {
+            // Ничего страшного, покажем оверлей
+        }
+        
+        // Если разрешений нет — показываем оверлей
+        permissionOverlay.classList.remove('hidden');
+        startBtn.disabled = true;
+        console.log('⏳ Ожидаем разрешения пользователя');
+    }
+
+    // ---------- ОБРАБОТЧИК КНОПКИ "РАЗРЕШИТЬ" ----------
+    async function handlePermissionGrant() {
+        try {
+            // Запрашиваем доступ
+            const stream = await requestMedia();
+            if (!stream) {
+                // Пользователь отказал
+                alert('❌ Без доступа к камере и микрофону видеочат не работает.');
+                return;
+            }
+
+            // Успех!
+            localStream = stream;
+            showSelfVideo(stream);
+            isPermissionGranted = true;
+            permissionOverlay.classList.add('hidden');
+            startBtn.disabled = false;
+            setStatus('ГОТОВ К ПОИСКУ', 'idle');
+            console.log('✅ Разрешения получены, поток активирован');
+            
+        } catch (err) {
+            console.error('Ошибка при получении разрешений:', err);
+            alert('❌ Что-то пошло не так. Попробуй обновить страницу.');
         }
     }
 
@@ -69,7 +143,6 @@
         remotePlaceholder.textContent = '👤 ПОДКЛЮЧЁН';
         remotePlaceholder.style.color = '#70ddc0';
         remotePlaceholder.style.textShadow = '0 0 30px #00ffbb55';
-        // Можно добавить анимацию или эффект
     }
 
     function hideRemote() {
@@ -93,23 +166,19 @@
     // ---------- ЗАПУСК ПОИСКА ----------
     async function startSession() {
         if (isActive) return;
-
-        // 1. Запрашиваем медиа
-        if (!localStream) {
-            const stream = await requestMedia();
-            if (!stream) return;
-            localStream = stream;
-            showSelfVideo(stream);
+        if (!isPermissionGranted || !localStream) {
+            alert('Сначала разреши доступ к камере и микрофону');
+            return;
         }
 
-        // 2. Активируем состояние
+        // Активируем состояние
         isActive = true;
         isConnected = false;
         startBtn.disabled = true;
         stopBtn.disabled = false;
         setStatus('ПОИСК СОБЕСЕДНИКА...', 'searching');
 
-        // 3. Имитация поиска
+        // Имитация поиска
         let searchTime = 1500 + Math.random() * 4000;
         let elapsed = 0;
         const step = 200;
@@ -125,7 +194,7 @@
                     setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
                     showRemoteConnected();
                     
-                    // Можно добавить звуковой эффект
+                    // Звук подключения
                     try {
                         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                         const oscillator = audioCtx.createOscillator();
@@ -162,9 +231,6 @@
         setStatus('⏹ ОСТАНОВЛЕНО', 'idle');
         startBtn.disabled = false;
         stopBtn.disabled = true;
-
-        // Не останавливаем локальный поток, чтобы при повторном старте
-        // не запрашивать разрешения снова
     }
 
     // ---------- ПОЛНАЯ ПЕРЕЗАГРУЗКА ----------
@@ -176,26 +242,26 @@
         }
         hideSelfVideo();
         hideRemote();
-        setStatus('ГОТОВ', 'idle');
-        startBtn.disabled = false;
+        isPermissionGranted = false;
+        setStatus('НАЖМИТЕ «НАЧАТЬ»', 'idle');
+        startBtn.disabled = true;
         stopBtn.disabled = true;
+        permissionOverlay.classList.remove('hidden');
     }
 
     // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     function init() {
-        setStatus('НАЖМИТЕ «НАЧАТЬ»', 'idle');
+        // Показываем оверлей и запрашиваем разрешения
+        autoRequestPermission();
 
+        // Обработчик кнопки "РАЗРЕШИТЬ"
+        permissionBtn.addEventListener('click', handlePermissionGrant);
+
+        // Кнопки управления
         startBtn.addEventListener('click', startSession);
         stopBtn.addEventListener('click', stopSession);
 
-        // Очистка при закрытии страницы
-        window.addEventListener('beforeunload', () => {
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-            }
-        });
-
-        // Клавиатурные сокращения
+        // Клавиатура
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !startBtn.disabled) {
                 startBtn.click();
@@ -205,8 +271,15 @@
             }
         });
 
-        console.log('✦ ARTEFAKT RULET ✦ готов к работе!');
-        console.log('Нажми НАЧАТЬ для поиска собеседника.');
+        // Очистка при закрытии
+        window.addEventListener('beforeunload', () => {
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+            }
+        });
+
+        console.log('✦ ARTEFAKT RULET ✦');
+        console.log('📷 Автоматический запрос разрешений...');
     }
 
     // Запускаем
