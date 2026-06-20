@@ -16,14 +16,13 @@ const io = new Server(server, {
 });
 
 // Хранилище
-const onlineUsers = new Map(); // peerId -> socketId
+const onlineUsers = new Map();
 const waitingUsers = [];
 
 // ============ SOCKET.IO ============
 io.on('connection', (socket) => {
     console.log(`🟢 Новое подключение: ${socket.id}`);
 
-    // Регистрация пользователя
     socket.on('register', (peerId) => {
         console.log(`📝 Регистрация: ${peerId}`);
         onlineUsers.set(peerId, socket.id);
@@ -36,7 +35,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Поиск собеседника
     socket.on('find-partner', () => {
         const peerId = socket.data.peerId;
         console.log(`🔍 ${peerId} ищет собеседника`);
@@ -48,6 +46,7 @@ io.on('connection', (socket) => {
             if (partnerPeerId) {
                 console.log(`✅ Соединяем ${peerId} с ${partnerPeerId}`);
                 
+                // Отправляем обоим ID друг друга
                 io.to(socket.id).emit('partner-found', { partnerId: partnerPeerId });
                 io.to(partnerSocketId).emit('partner-found', { partnerId: peerId });
                 return;
@@ -59,7 +58,6 @@ io.on('connection', (socket) => {
         console.log(`⏳ ${peerId} добавлен в очередь (${waitingUsers.length})`);
     });
 
-    // Отмена поиска
     socket.on('cancel-search', () => {
         const index = waitingUsers.indexOf(socket.id);
         if (index !== -1) {
@@ -68,39 +66,68 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ============ ЧАТ: ОТПРАВКА СООБЩЕНИЯ ============
-    socket.on('chat-message', (data) => {
-        const fromPeerId = socket.data.peerId;
-        const { to, text, time } = data;
-        
-        console.log(`💬 Чат: ${fromPeerId} -> ${to}: "${text}"`);
-        
-        // Находим сокет получателя
-        const targetSocketId = onlineUsers.get(to);
+    // ============ WEBRTC СИГНАЛИНГ ============
+    socket.on('webRTC-offer', (data) => {
+        const from = socket.data.peerId;
+        const targetSocketId = onlineUsers.get(data.to);
         if (targetSocketId) {
-            // Отправляем сообщение получателю
-            io.to(targetSocketId).emit('chat-message', {
-                from: fromPeerId,
-                text: text,
-                time: time
+            console.log(`📤 Пересылка OFFER от ${from} к ${data.to}`);
+            io.to(targetSocketId).emit('webRTC-offer', {
+                from: from,
+                offer: data.offer
             });
-            console.log(`✅ Сообщение доставлено ${to}`);
-        } else {
-            console.log(`❌ Пользователь ${to} не найден в сети`);
         }
     });
 
-    // Завершение разговора
-    socket.on('end-call', () => {
-        const peerId = socket.data.peerId;
-        console.log(`📞 ${peerId} завершил разговор`);
-        const index = waitingUsers.indexOf(socket.id);
-        if (index !== -1) {
-            waitingUsers.splice(index, 1);
+    socket.on('webRTC-answer', (data) => {
+        const from = socket.data.peerId;
+        const targetSocketId = onlineUsers.get(data.to);
+        if (targetSocketId) {
+            console.log(`📤 Пересылка ANSWER от ${from} к ${data.to}`);
+            io.to(targetSocketId).emit('webRTC-answer', {
+                from: from,
+                answer: data.answer
+            });
         }
     });
 
-    // Отключение
+    socket.on('webRTC-candidate', (data) => {
+        const from = socket.data.peerId;
+        const targetSocketId = onlineUsers.get(data.to);
+        if (targetSocketId) {
+            console.log(`📤 Пересылка CANDIDATE от ${from} к ${data.to}`);
+            io.to(targetSocketId).emit('webRTC-candidate', {
+                from: from,
+                candidate: data.candidate
+            });
+        }
+    });
+
+    socket.on('end-call', (data) => {
+        const from = socket.data.peerId;
+        const targetSocketId = onlineUsers.get(data.to);
+        if (targetSocketId) {
+            console.log(`📞 ${from} завершил разговор с ${data.to}`);
+            io.to(targetSocketId).emit('partner-disconnected', {
+                from: from
+            });
+        }
+    });
+
+    // ============ ЧАТ ============
+    socket.on('chat-message', (data) => {
+        const from = socket.data.peerId;
+        const targetSocketId = onlineUsers.get(data.to);
+        if (targetSocketId) {
+            console.log(`💬 ${from} -> ${data.to}: "${data.text}"`);
+            io.to(targetSocketId).emit('chat-message', {
+                from: from,
+                text: data.text,
+                time: data.time
+            });
+        }
+    });
+
     socket.on('disconnect', () => {
         const peerId = socket.data.peerId;
         if (peerId) {
@@ -129,10 +156,9 @@ app.get('/users', (req, res) => {
     });
 });
 
-// ============ ЗАПУСК ============
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📡 Socket.IO готов к подключениям`);
-    console.log(`💬 Чат поддерживает обмен сообщениями`);
+    console.log(`🎥 WebRTC сигналинг активен`);
 });
