@@ -439,4 +439,66 @@
             });
             return stream;
         } catch (err) {
-            console.warn('Ошибка доступа к медиа:',
+            console.warn('Ошибка доступа к медиа:', err);
+            alert('❌ Нет доступа к камере или микрофону.\nРазреши доступ в браузере.');
+            return null;
+        }
+    }
+
+    async function handlePermissionGrant() {
+        try {
+            const stream = await requestMedia();
+            if (!stream) return;
+
+            localStream = stream;
+            showSelfVideo(stream);
+            isPermissionGranted = true;
+            permissionOverlay.classList.add('hidden');
+            startBtn.disabled = false;
+            setStatus('ГОТОВ К ПОИСКУ', 'idle');
+            
+            if (!peer) {
+                connectToPeerServer();
+            }
+            
+        } catch (err) {
+            console.error('Ошибка:', err);
+            alert('❌ Что-то пошло не так. Попробуй обновить страницу.');
+        }
+    }
+
+    // ============ ИНИЦИАЛИЗАЦИЯ ============
+    function init() {
+        permissionOverlay.classList.remove('hidden');
+        startBtn.disabled = true;
+        
+        connectToServer();
+        connectToPeerServer();
+
+        permissionBtn.addEventListener('click', handlePermissionGrant);
+        startBtn.addEventListener('click', startSession);
+        stopBtn.addEventListener('click', stopSession);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !startBtn.disabled) startBtn.click();
+            if (e.key === 'Escape' && !stopBtn.disabled) stopBtn.click();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+            }
+            if (socket && socket.connected) {
+                socket.disconnect();
+            }
+            if (peer && !peer.destroyed) {
+                peer.destroy();
+            }
+        });
+
+        console.log('✦ ARTEFAKT RULET ✦');
+        console.log('📡 Подключение к серверу...');
+    }
+
+    init();
+})();
