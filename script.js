@@ -62,24 +62,14 @@
         port: 443,
         path: '/',
         secure: true,
-        debug: 3, // Включаем отладку
+        debug: 3,
         config: {
             iceServers: [
-                // Google STUN серверы
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:stun4.l.google.com:19302' },
-                
-                // STUN серверы
-                { urls: 'stun:stun.ekiga.net' },
-                { urls: 'stun:stun.ideasip.com' },
-                { urls: 'stun:stun.iptel.org' },
-                { urls: 'stun:stun.rixtelecom.se' },
-                { urls: 'stun:stun.schlund.de' },
-                
-                // TURN серверы (для обхода NAT)
                 {
                     urls: 'turn:relay1.expressturn.com:3478',
                     username: 'efZRVVVFCWXWUOQCUJ',
@@ -91,10 +81,7 @@
                     credential: 'sZ6BVVUYSXJEVNKY'
                 }
             ],
-            // Улучшаем соединение
-            sdpSemantics: 'unified-plan',
-            bundlePolicy: 'max-bundle',
-            rtcpMuxPolicy: 'require'
+            sdpSemantics: 'unified-plan'
         }
     };
 
@@ -278,13 +265,6 @@
 
         peer.on('error', (err) => {
             console.error('❌ Ошибка PeerJS:', err);
-            // Если ошибка связана с TURN, пробуем переподключиться
-            if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
-                setTimeout(() => {
-                    console.log('🔄 Переподключение к PeerJS...');
-                    connectToPeerServer();
-                }, 3000);
-            }
         });
 
         peer.on('call', (call) => {
@@ -305,7 +285,7 @@
         });
     }
 
-    // ============ ЗВОНОК ПАРТНЁРУ ============
+    // ============ ЗВОНОК ПАРТНЁРУ (С ПРИНУДИТЕЛЬНЫМ ВИДЕО) ============
     function callPartner(partnerId) {
         if (!localStream) {
             console.error('❌ Нет локального потока');
@@ -313,14 +293,19 @@
         }
 
         console.log(`📞 Звоним ${partnerId}...`);
+        console.log(`📹 Видео-треков: ${localStream.getVideoTracks().length}`);
+        console.log(`🎧 Аудио-треков: ${localStream.getAudioTracks().length}`);
+        
         setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
         
-        // Убеждаемся, что поток содержит видео
-        const videoTracks = localStream.getVideoTracks();
-        const audioTracks = localStream.getAudioTracks();
-        console.log(`🎥 Видео-треков: ${videoTracks.length}, Аудио-треков: ${audioTracks.length}`);
+        // ПРИНУДИТЕЛЬНО включаем видео в SDP
+        const options = {
+            stream: localStream,
+            video: true,
+            audio: true
+        };
         
-        const call = peer.call(partnerId, localStream);
+        const call = peer.call(partnerId, localStream, options);
         currentCall = call;
 
         call.on('stream', (remoteStream) => {
@@ -355,7 +340,7 @@
         });
     }
 
-    // ============ ПРИНЯТЬ ЗВОНОК ============
+    // ============ ПРИНЯТЬ ЗВОНОК (С ПРИНУДИТЕЛЬНЫМ ВИДЕО) ============
     function acceptCall(call) {
         if (!localStream) {
             call.close();
@@ -363,12 +348,21 @@
         }
 
         console.log('📞 Принимаем входящий звонок от:', call.peer);
+        console.log(`📹 Видео-треков: ${localStream.getVideoTracks().length}`);
+        console.log(`🎧 Аудио-треков: ${localStream.getAudioTracks().length}`);
+        
         isActive = true;
         currentCall = call;
         currentPartnerId = call.peer;
         
-        // Отвечаем с потоком
-        call.answer(localStream);
+        // ПРИНУДИТЕЛЬНО отвечаем с видео
+        const options = {
+            stream: localStream,
+            video: true,
+            audio: true
+        };
+        
+        call.answer(localStream, options);
         partnerIdElement.textContent = call.peer;
         partnerIdElement.className = 'id connected';
 
@@ -718,6 +712,8 @@
     function showRemoteVideo(stream) {
         // Проверяем, есть ли видео-треки
         const videoTracks = stream.getVideoTracks();
+        console.log(`📹 Видео-треков в стриме: ${videoTracks.length}`);
+        
         if (videoTracks.length === 0) {
             console.warn('⚠️ В стриме нет видео-треков!');
             remotePlaceholder.textContent = '🎧 Только аудио';
@@ -728,6 +724,8 @@
         }
         
         remoteVideo.srcObject = stream;
+        
+        // Пробуем воспроизвести
         remoteVideo.onloadedmetadata = () => {
             remoteVideo.play().catch(() => {
                 console.warn('⚠️ Не удалось воспроизвести видео собеседника');
@@ -906,7 +904,7 @@
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
         console.log('💬 Чат будет работать после подключения к собеседнику');
-        console.log('🎥 Если не видно камеру, проверьте консоль (F12)');
+        console.log('🎥 Если не видно камеру - проверьте консоль (F12)');
     }
 
     init();
