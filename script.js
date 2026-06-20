@@ -32,9 +32,7 @@
 
     // Состояние
     let localStream = null;
-    let peer = null;
     let socket = null;
-    let currentCall = null;
     let isActive = false;
     let isConnected = false;
     let isPermissionGranted = false;
@@ -44,6 +42,11 @@
     let currentMode = 'video';
     let currentPartnerId = null;
     const SEARCH_TIMEOUT = 7000;
+
+    // WebRTC
+    let pc = null;
+    let pendingCandidates = [];
+    let isOfferer = false;
 
     // Таймер общения
     let timerInterval = null;
@@ -55,28 +58,21 @@
     // ============ КОНФИГУРАЦИЯ ============
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
 
-    // ============ НАСТРОЙКА PEERJS ============
-    const PEER_CONFIG = {
-        host: '0.peerjs.com',
-        port: 443,
-        path: '/',
-        secure: true,
-        debug: 0,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' },
-                {
-                    urls: 'turn:relay1.expressturn.com:3478',
-                    username: 'efZRVVVFCWXWUOQCUJ',
-                    credential: 'sZ6BVVUYSXJEVNKY'
-                }
-            ]
-        }
+    const ICE_SERVERS = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ]
     };
+
+    // ============ СОЗДАНИЕ ID ============
+    function generateId() {
+        return Math.random().toString(36).substring(2, 10) + 
+               Math.random().toString(36).substring(2, 10);
+    }
 
     // ============ ЗВУКИ ============
     function initAudio() {
@@ -130,18 +126,6 @@
                 gainNode.gain.value = 0.05;
                 oscillator.start();
                 setTimeout(() => oscillator.stop(), 80);
-            } else if (type === 'complain') {
-                oscillator.frequency.value = 600;
-                oscillator.type = 'sine';
-                gainNode.gain.value = 0.1;
-                oscillator.start();
-                setTimeout(() => {
-                    oscillator.frequency.value = 800;
-                }, 100);
-                setTimeout(() => {
-                    oscillator.frequency.value = 1000;
-                }, 200);
-                setTimeout(() => oscillator.stop(), 350);
             }
         } catch (e) {}
     }
@@ -194,9 +178,8 @@
             console.log('✅ Socket.IO подключён');
             serverText.textContent = '✅ Сервер подключён';
             serverDot.className = 'status-dot connected';
-            if (myPeerId) {
-                socket.emit('register', myPeerId);
-            }
+            myPeerId = generateId();
+            socket.emit('register', myPeerId);
         });
 
         socket.on('connect_error', (err) => {
@@ -219,6 +202,7 @@
             setStatus('⏳ ОЖИДАНИЕ...', 'searching');
         });
 
+        // ============ WEBRTC СИГНАЛИНГ ============
         socket.on('partner-found', (data) => {
             console.log('🎯 Найден собеседник:', data.partnerId);
             if (searchTimeout) {
@@ -226,7 +210,31 @@
                 searchTimeout = null;
             }
             currentPartnerId = data.partnerId;
-            callPartner(data.partnerId);
+            // МЫ СОЗДАЁМ OFFER
+            createOffer();
+        });
+
+        socket.on('webRTC-offer', (data) => {
+            console.log('📞 Получен OFFER от:', data.from);
+            currentPartnerId = data.from;
+            handleOffer(data.offer);
+        });
+
+        socket.on('webRTC-answer', (data) => {
+            console.log('📞 Получен ANSWER от:', data.from);
+            handleAnswer(data.answer);
+        });
+
+        socket.on('webRTC-candidate', (data) => {
+            console.log('📞 Получен CANDIDATE от:', data.from);
+            handleCandidate(data.candidate);
+        });
+
+        socket.on('partner-disconnected', (data) => {
+            console.log('🔴 Собеседник отключился');
+            if (isConnected) {
+                disconnectCall();
+            }
         });
 
         socket.on('disconnect', () => {
@@ -235,248 +243,174 @@
             serverDot.className = 'status-dot';
         });
 
+        // Чат
         socket.on('chat-message', (data) => {
             console.log('💬 Получено сообщение от', data.from, ':', data.text);
-            if (data.from === currentPartnerId || data.from === partnerIdElement.textContent) {
+            if (data.from === currentPartnerId) {
                 addMessage(data.text, 'other', data.time);
                 playSound('message');
             }
         });
     }
 
-    // ============ PEERJS ============
-    function connectToPeerServer() {
-        peer = new Peer(undefined, PEER_CONFIG);
-
-        peer.on('open', (id) => {
-            myPeerId = id;
-            console.log('✅ PeerJS подключён, ID:', id);
-            if (socket && socket.connected) {
-                socket.emit('register', id);
-            }
-        });
-
-        peer.on('error', (err) => {
-            console.error('❌ Ошибка PeerJS:', err);
-        });
-
-        peer.on('call', (call) => {
-            console.log('📞 Входящий вызов от:', call.peer);
-            if (isConnected) {
-                call.close();
-                return;
-            }
-            currentPartnerId = call.peer;
-            acceptCall(call);
-        });
-
-        peer.on('disconnected', () => {
-            console.log('🔴 Peer отключился');
-            if (isConnected) {
-                disconnectCall();
-            }
-        });
-    }
-
-    // ============ СОЗДАНИЕ RTCPeerConnection НАПРЯМУЮ ============
-    function createPeerConnection() {
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' },
-                {
-                    urls: 'turn:relay1.expressturn.com:3478',
-                    username: 'efZRVVVFCWXWUOQCUJ',
-                    credential: 'sZ6BVVUYSXJEVNKY'
-                }
-            ]
-        });
-        return pc;
-    }
-
-    // ============ ЗВОНОК ПАРТНЁРУ (ЧЕРЕЗ PEERJS) ============
-    function callPartner(partnerId) {
+    // ============ WEBRTC: СОЗДАНИЕ OFFER ============
+    function createOffer() {
         if (!localStream) {
             console.error('❌ Нет локального потока');
             return;
         }
 
-        console.log(`📞 Звоним ${partnerId}...`);
-        console.log(`📹 Видео-треков: ${localStream.getVideoTracks().length}`);
-        console.log(`🎧 Аудио-треков: ${localStream.getAudioTracks().length}`);
-        
+        console.log('📞 Создаём OFFER для:', currentPartnerId);
         setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
-        
-        // СОЗДАЁМ НАТИВНЫЙ RTCPeerConnection
-        const pc = createPeerConnection();
-        
+
+        pc = new RTCPeerConnection(ICE_SERVERS);
+
         // Добавляем все треки
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
+            console.log(`✅ Добавлен трек: ${track.kind}`);
         });
-        
-        // Слушаем входящие треки
+
+        // Получаем удалённый стрим
         pc.ontrack = (event) => {
-            console.log('✅ Получен трек:', event.track.kind);
+            console.log('✅ Получен трек от собеседника:', event.track.kind);
             if (event.track.kind === 'video') {
                 const stream = new MediaStream();
                 stream.addTrack(event.track);
                 showRemoteVideo(stream);
-                isConnected = true;
-                isSearching = false;
-                setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                complainBtn.disabled = true;
-                complainBtn.classList.remove('active');
-                partnerIdElement.textContent = partnerId;
-                partnerIdElement.className = 'id connected';
-                currentPartnerId = partnerId;
-                
-                enableChat(true);
-                startTimer();
-                timerDisplay.classList.add('active');
-                playSound('connect');
-                clearChat();
+                onConnected();
             }
         };
-        
-        // Создаём оффер
+
+        // Отправка ICE кандидатов
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                console.log('📤 Отправка ICE кандидата');
+                socket.emit('webRTC-candidate', {
+                    to: currentPartnerId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('🔄 ICE состояние:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'disconnected' || 
+                pc.iceConnectionState === 'failed') {
+                disconnectCall();
+            }
+        };
+
+        // Создаём OFFER
         pc.createOffer()
             .then(offer => pc.setLocalDescription(offer))
             .then(() => {
-                // Отправляем оффер через PeerJS
-                const call = peer.call(partnerId, pc.localDescription, {
-                    metadata: { type: 'webrtc-offer' }
-                });
-                
-                currentCall = call;
-                
-                // Обработка ответа
-                call.on('data', (data) => {
-                    try {
-                        const message = JSON.parse(data);
-                        if (message.type === 'answer') {
-                            pc.setRemoteDescription(new RTCSessionDescription(message));
-                        } else if (message.type === 'candidate') {
-                            pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-                        }
-                    } catch (e) {}
-                });
-                
-                // Отправка ICE-кандидатов
-                pc.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        call.send(JSON.stringify({
-                            type: 'candidate',
-                            candidate: event.candidate
-                        }));
-                    }
-                };
-                
-                call.on('close', () => {
-                    console.log('🔴 Звонок закрыт');
-                    pc.close();
-                    if (isConnected) {
-                        disconnectCall();
-                    }
+                console.log('📤 Отправка OFFER');
+                socket.emit('webRTC-offer', {
+                    to: currentPartnerId,
+                    offer: pc.localDescription
                 });
             })
             .catch(err => {
-                console.error('Ошибка создания оффера:', err);
+                console.error('Ошибка создания OFFER:', err);
             });
     }
 
-    // ============ ПРИНЯТЬ ЗВОНОК (ЧЕРЕЗ PEERJS) ============
-    function acceptCall(call) {
+    // ============ WEBRTC: ОБРАБОТКА OFFER ============
+    function handleOffer(offer) {
         if (!localStream) {
-            call.close();
+            console.error('❌ Нет локального потока');
             return;
         }
 
-        console.log('📞 Принимаем входящий звонок от:', call.peer);
-        console.log(`📹 Видео-треков: ${localStream.getVideoTracks().length}`);
-        console.log(`🎧 Аудио-треков: ${localStream.getAudioTracks().length}`);
-        
-        isActive = true;
-        currentCall = call;
-        currentPartnerId = call.peer;
-        partnerIdElement.textContent = call.peer;
-        partnerIdElement.className = 'id connected';
-        
-        // СОЗДАЁМ НАТИВНЫЙ RTCPeerConnection
-        const pc = createPeerConnection();
-        
+        console.log('📞 Обработка OFFER');
+        setStatus('📞 СОЕДИНЕНИЕ...', 'searching');
+
+        pc = new RTCPeerConnection(ICE_SERVERS);
+
         // Добавляем все треки
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
+            console.log(`✅ Добавлен трек: ${track.kind}`);
         });
-        
-        // Слушаем входящие треки
+
         pc.ontrack = (event) => {
-            console.log('✅ Получен трек:', event.track.kind);
+            console.log('✅ Получен трек от собеседника:', event.track.kind);
             if (event.track.kind === 'video') {
                 const stream = new MediaStream();
                 stream.addTrack(event.track);
                 showRemoteVideo(stream);
-                isConnected = true;
-                isSearching = false;
-                setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                complainBtn.disabled = true;
-                complainBtn.classList.remove('active');
-                currentPartnerId = call.peer;
-                
-                enableChat(true);
-                startTimer();
-                timerDisplay.classList.add('active');
-                playSound('connect');
-                clearChat();
+                onConnected();
             }
         };
-        
-        // Получаем оффер из данных
-        call.on('data', (data) => {
-            try {
-                const message = JSON.parse(data);
-                if (message.type === 'offer') {
-                    pc.setRemoteDescription(new RTCSessionDescription(message))
-                        .then(() => pc.createAnswer())
-                        .then(answer => pc.setLocalDescription(answer))
-                        .then(() => {
-                            call.send(JSON.stringify({
-                                type: 'answer',
-                                sdp: pc.localDescription.sdp,
-                                type: 'answer'
-                            }));
-                        });
-                } else if (message.type === 'candidate') {
-                    pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-                }
-            } catch (e) {}
-        });
-        
-        // Отправка ICE-кандидатов
+
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                call.send(JSON.stringify({
-                    type: 'candidate',
+                console.log('📤 Отправка ICE кандидата');
+                socket.emit('webRTC-candidate', {
+                    to: currentPartnerId,
                     candidate: event.candidate
-                }));
+                });
             }
         };
-        
-        call.on('close', () => {
-            console.log('🔴 Входящий звонок закрыт');
-            pc.close();
-            if (isConnected) {
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('🔄 ICE состояние:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'disconnected' || 
+                pc.iceConnectionState === 'failed') {
                 disconnectCall();
             }
-        });
+        };
+
+        // Устанавливаем удалённое описание
+        pc.setRemoteDescription(offer)
+            .then(() => pc.createAnswer())
+            .then(answer => pc.setLocalDescription(answer))
+            .then(() => {
+                console.log('📤 Отправка ANSWER');
+                socket.emit('webRTC-answer', {
+                    to: currentPartnerId,
+                    answer: pc.localDescription
+                });
+            })
+            .catch(err => {
+                console.error('Ошибка обработки OFFER:', err);
+            });
+    }
+
+    // ============ WEBRTC: ОБРАБОТКА ANSWER ============
+    function handleAnswer(answer) {
+        if (!pc) return;
+        console.log('📞 Обработка ANSWER');
+        pc.setRemoteDescription(answer)
+            .catch(err => console.error('Ошибка установки ANSWER:', err));
+    }
+
+    // ============ WEBRTC: ОБРАБОТКА CANDIDATE ============
+    function handleCandidate(candidate) {
+        if (!pc) return;
+        console.log('📞 Добавление ICE кандидата');
+        pc.addIceCandidate(candidate)
+            .catch(err => console.error('Ошибка добавления кандидата:', err));
+    }
+
+    // ============ ПОДКЛЮЧЕНИЕ УСТАНОВЛЕНО ============
+    function onConnected() {
+        isConnected = true;
+        isSearching = false;
+        setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        complainBtn.disabled = true;
+        complainBtn.classList.remove('active');
+        partnerIdElement.textContent = currentPartnerId;
+        partnerIdElement.className = 'id connected';
+        
+        enableChat(true);
+        startTimer();
+        timerDisplay.classList.add('active');
+        playSound('connect');
+        clearChat();
     }
 
     // ============ ПОИСК СОБЕСЕДНИКА ============
@@ -524,14 +458,19 @@
 
     // ============ РАЗЪЕДИНЕНИЕ ============
     function disconnectCall() {
-        if (currentCall) {
-            currentCall.close();
-            currentCall = null;
+        if (pc) {
+            pc.close();
+            pc = null;
         }
         
         if (searchTimeout) {
             clearTimeout(searchTimeout);
             searchTimeout = null;
+        }
+        
+        // Сообщаем серверу, что отключаемся
+        if (socket && socket.connected && currentPartnerId) {
+            socket.emit('end-call', { to: currentPartnerId });
         }
         
         hideRemoteVideo();
@@ -556,10 +495,6 @@
         stopTimer();
         timerDisplay.classList.remove('active');
         playSound('disconnect');
-        
-        if (socket && socket.connected) {
-            socket.emit('end-call');
-        }
     }
 
     // ============ ЗАПУСК СЕССИИ ============
@@ -567,10 +502,6 @@
         if (isActive || isSearching) return;
         if (!isPermissionGranted || !localStream) {
             alert('Сначала активируй доступ к камере/микрофону');
-            return;
-        }
-        if (!peer || peer.destroyed) {
-            alert('⏳ Подключение к PeerJS... Подожди');
             return;
         }
         if (!socket || !socket.connected) {
@@ -710,7 +641,7 @@
     function sendMessage() {
         const text = chatInput.value.trim();
         if (!text || !isConnected || !currentPartnerId) {
-            console.warn('❌ Нельзя отправить сообщение:', { text, isConnected, currentPartnerId });
+            console.warn('❌ Нельзя отправить сообщение');
             return;
         }
         
@@ -722,11 +653,6 @@
                 text: text,
                 time: getCurrentTime()
             });
-            console.log('✅ Сообщение отправлено через Socket.IO');
-        } else {
-            console.warn('❌ Socket.IO не подключён');
-            showNotification('❌ Ошибка', 'Нет подключения к серверу');
-            return;
         }
         
         addMessage(text, 'self', getCurrentTime());
@@ -745,7 +671,6 @@
         msg.innerHTML = `${text} <span class="msg-time">${time || getCurrentTime()}</span>`;
         chatMessages.appendChild(msg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        console.log(`💬 Добавлено сообщение (${type}): ${text}`);
     }
 
     function getCurrentTime() {
@@ -928,15 +853,14 @@
             startBtn.disabled = false;
             setStatus('ГОТОВ К ПОИСКУ', 'idle');
             
-            if (!peer) {
-                connectToPeerServer();
-            }
-            
         } catch (err) {
             console.error('Ошибка:', err);
             alert('❌ Что-то пошло не так. Попробуй обновить страницу.');
         }
     }
+
+    // ============ ОБНОВЛЕННЫЙ СЕРВЕР (НУЖНО ОБНОВИТЬ) ============
+    // !!! ВАЖНО: НУЖНО ОБНОВИТЬ server.js НА НОВУЮ ВЕРСИЮ !!!
 
     // ============ ИНИЦИАЛИЗАЦИЯ ============
     function init() {
@@ -947,7 +871,6 @@
         complainBtn.disabled = true;
         
         connectToServer();
-        connectToPeerServer();
 
         permissionBtn.addEventListener('click', handlePermissionGrant);
         startBtn.addEventListener('click', startSession);
@@ -974,9 +897,6 @@
             if (socket && socket.connected) {
                 socket.disconnect();
             }
-            if (peer && !peer.destroyed) {
-                peer.destroy();
-            }
             if (timerInterval) {
                 clearInterval(timerInterval);
             }
@@ -984,8 +904,7 @@
 
         console.log('✦ ARTEFAKT RULET ✦');
         console.log('📡 Подключение к серверу...');
-        console.log('💬 Чат будет работать после подключения к собеседнику');
-        console.log('🎥 Используется нативный WebRTC');
+        console.log('🎥 Используется НАТИВНЫЙ WebRTC без PeerJS');
     }
 
     init();
