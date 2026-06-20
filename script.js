@@ -10,6 +10,7 @@
     const statusDot = document.getElementById('statusDot');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const complainBtn = document.getElementById('complainBtn');
     const permissionOverlay = document.getElementById('permissionOverlay');
     const permissionBtn = document.getElementById('permissionBtn');
     const serverStatus = document.getElementById('serverStatus');
@@ -21,6 +22,13 @@
     const modeAudio = document.getElementById('modeAudio');
     const modeHint = document.getElementById('modeHint');
     const selfBadge = document.getElementById('selfBadge');
+    const timerDisplay = document.getElementById('timerDisplay');
+
+    // Чат элементы
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const chatSendBtn = document.getElementById('chatSendBtn');
+    const chatStatus = document.getElementById('chatStatus');
 
     // Состояние
     let localStream = null;
@@ -33,14 +41,18 @@
     let myPeerId = null;
     let isSearching = false;
     let searchTimeout = null;
-    let currentMode = 'video'; // 'video' или 'audio'
+    let currentMode = 'video';
     const SEARCH_TIMEOUT = 7000;
 
+    // Таймер общения
+    let timerInterval = null;
+    let seconds = 0;
+
+    // Звуки
+    let audioCtx = null;
+
     // ============ КОНФИГУРАЦИЯ ============
-    // 🔥 ДЛЯ ПРОДАКШЕНА НА RENDER:
     const SERVER_URL = 'https://artefakt-rulet-server.onrender.com';
-    
-    // 🔥 ДЛЯ ЛОКАЛЬНОЙ РАЗРАБОТКИ:
     // const SERVER_URL = 'http://localhost:3000';
 
     const PEER_CONFIG = {
@@ -61,15 +73,80 @@
         }
     };
 
+    // ============ ЗВУКИ ============
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSound(type) {
+        try {
+            initAudio();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'connect') {
+                oscillator.frequency.value = 880;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.15;
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 200);
+                setTimeout(() => {
+                    const osc2 = audioCtx.createOscillator();
+                    const gain2 = audioCtx.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(audioCtx.destination);
+                    osc2.frequency.value = 1100;
+                    osc2.type = 'sine';
+                    gain2.gain.value = 0.1;
+                    osc2.start();
+                    setTimeout(() => osc2.stop(), 150);
+                }, 150);
+            } else if (type === 'disconnect') {
+                oscillator.frequency.value = 400;
+                oscillator.type = 'sawtooth';
+                gainNode.gain.value = 0.08;
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                setTimeout(() => oscillator.stop(), 400);
+            } else if (type === 'fail') {
+                oscillator.frequency.value = 300;
+                oscillator.type = 'square';
+                gainNode.gain.value = 0.06;
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                setTimeout(() => oscillator.stop(), 300);
+            } else if (type === 'message') {
+                oscillator.frequency.value = 1200;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.05;
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 80);
+            } else if (type === 'complain') {
+                oscillator.frequency.value = 600;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.1;
+                oscillator.start();
+                setTimeout(() => {
+                    oscillator.frequency.value = 800;
+                }, 100);
+                setTimeout(() => {
+                    oscillator.frequency.value = 1000;
+                }, 200);
+                setTimeout(() => oscillator.stop(), 350);
+            }
+        } catch (e) {}
+    }
+
     // ============ ВЫБОР РЕЖИМА ============
     function selectMode(mode) {
         currentMode = mode;
-        
-        // Обновляем кнопки
         modeVideo.classList.toggle('active', mode === 'video');
         modeAudio.classList.toggle('active', mode === 'audio');
         
-        // Обновляем подсказку
         if (mode === 'video') {
             modeHint.textContent = '⚠️ Браузер запросит доступ к камере и микрофону';
             selfBadge.textContent = 'ВЫ 📹';
@@ -78,7 +155,6 @@
             selfBadge.textContent = 'ВЫ 🎧';
         }
         
-        // Если разрешения уже были получены, обновляем поток
         if (isPermissionGranted && localStream) {
             updateStream();
         }
@@ -93,7 +169,6 @@
             localStream.getTracks().forEach(t => t.stop());
             localStream = null;
         }
-        
         const stream = await requestMedia();
         if (stream) {
             localStream = stream;
@@ -114,7 +189,6 @@
             console.log('✅ Socket.IO подключён');
             serverText.textContent = '✅ Сервер подключён';
             serverDot.className = 'status-dot connected';
-            
             if (myPeerId) {
                 socket.emit('register', myPeerId);
             }
@@ -142,12 +216,10 @@
 
         socket.on('partner-found', (data) => {
             console.log('🎯 Найден собеседник:', data.partnerId);
-            
             if (searchTimeout) {
                 clearTimeout(searchTimeout);
                 searchTimeout = null;
             }
-            
             callPartner(data.partnerId);
         });
 
@@ -155,6 +227,12 @@
             console.warn('⚠️ Сервер отключился');
             serverText.textContent = '⚠️ Сервер отключён';
             serverDot.className = 'status-dot';
+        });
+
+        socket.on('chat-message', (data) => {
+            console.log('💬 Сообщение от', data.from, ':', data.text);
+            addMessage(data.text, 'other', data.time);
+            playSound('message');
         });
     }
 
@@ -165,7 +243,6 @@
         peer.on('open', (id) => {
             myPeerId = id;
             console.log('✅ PeerJS подключён, ID:', id);
-            
             if (socket && socket.connected) {
                 socket.emit('register', id);
             }
@@ -182,6 +259,13 @@
                 return;
             }
             acceptCall(call);
+        });
+
+        peer.on('disconnected', () => {
+            console.log('🔴 Peer отключился');
+            if (isConnected) {
+                disconnectCall();
+            }
         });
     }
 
@@ -206,9 +290,15 @@
             setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
             startBtn.disabled = true;
             stopBtn.disabled = false;
+            complainBtn.disabled = true;
+            complainBtn.classList.remove('active');
             partnerIdElement.textContent = partnerId;
             partnerIdElement.className = 'id connected';
-            playConnectionSound();
+            
+            enableChat(true);
+            startTimer();
+            timerDisplay.classList.add('active');
+            playSound('connect');
         });
 
         call.on('close', () => {
@@ -241,7 +331,13 @@
             setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
             startBtn.disabled = true;
             stopBtn.disabled = false;
-            playConnectionSound();
+            complainBtn.disabled = true;
+            complainBtn.classList.remove('active');
+            
+            enableChat(true);
+            startTimer();
+            timerDisplay.classList.add('active');
+            playSound('connect');
         });
 
         call.on('close', () => {
@@ -276,13 +372,15 @@
                 setStatus('⏱️ ВРЕМЯ ВЫШЛО', 'idle');
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
+                complainBtn.disabled = true;
+                complainBtn.classList.remove('active');
                 
                 if (socket && socket.connected) {
                     socket.emit('cancel-search');
                 }
                 
                 showNotification('⏱️ Собеседник не найден', 'Повторите попытку через несколько секунд');
-                playFailSound();
+                playSound('fail');
                 
                 if (navigator.vibrate) {
                     navigator.vibrate([200, 100, 200]);
@@ -312,8 +410,20 @@
         setStatus('⏹ РАЗЪЕДИНЕНО', 'idle');
         startBtn.disabled = false;
         stopBtn.disabled = true;
+        
+        // АКТИВИРУЕМ КНОПКУ ЖАЛОБЫ!
+        complainBtn.disabled = false;
+        complainBtn.classList.add('active');
+        
         partnerIdElement.textContent = '—';
         partnerIdElement.className = 'id';
+        
+        enableChat(false);
+        chatStatus.textContent = '⛔ Не в чате';
+        
+        stopTimer();
+        timerDisplay.classList.remove('active');
+        playSound('disconnect');
         
         if (socket && socket.connected) {
             socket.emit('end-call');
@@ -336,6 +446,10 @@
             return;
         }
 
+        // Деактивируем кнопку жалобы при новом поиске
+        complainBtn.disabled = true;
+        complainBtn.classList.remove('active');
+        
         findPartner();
     }
 
@@ -358,10 +472,166 @@
             setStatus('⏹ ОСТАНОВЛЕНО', 'idle');
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            complainBtn.disabled = true;
+            complainBtn.classList.remove('active');
             return;
         }
         
         disconnectCall();
+    }
+
+    // ============ ЖАЛОБА ============
+    function openComplainModal() {
+        if (isConnected || isActive || isSearching) {
+            showNotification('⚠️ Нельзя пожаловаться', 'Сначала заверши разговор');
+            return;
+        }
+        
+        playSound('complain');
+        
+        // Создаём модалку
+        const overlay = document.createElement('div');
+        overlay.className = 'complain-modal-overlay show';
+        overlay.innerHTML = `
+            <div class="complain-modal">
+                <span class="modal-icon">⚠️</span>
+                <h2>ПОЖАЛОВАТЬСЯ</h2>
+                <p>Выберите причину жалобы на собеседника:</p>
+                <div class="complain-reasons">
+                    <div class="complain-reason" data-reason="Неприемлемое поведение">🔞 Неприемлемое поведение</div>
+                    <div class="complain-reason" data-reason="Спам">📨 Спам</div>
+                    <div class="complain-reason" data-reason="Оскорбления">😡 Оскорбления</div>
+                    <div class="complain-reason" data-reason="Мошенничество">💸 Мошенничество</div>
+                    <div class="complain-reason" data-reason="Другое">📝 Другое</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-cancel" id="complainCancel">ОТМЕНА</button>
+                    <button class="btn btn-send-complain" id="complainSend" disabled>ОТПРАВИТЬ</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        let selectedReason = null;
+        
+        // Выбор причины
+        overlay.querySelectorAll('.complain-reason').forEach(el => {
+            el.addEventListener('click', () => {
+                overlay.querySelectorAll('.complain-reason').forEach(r => r.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedReason = el.dataset.reason;
+                document.getElementById('complainSend').disabled = false;
+            });
+        });
+        
+        // Отмена
+        document.getElementById('complainCancel').addEventListener('click', () => {
+            overlay.remove();
+        });
+        
+        // Отправка
+        document.getElementById('complainSend').addEventListener('click', () => {
+            if (!selectedReason) return;
+            
+            const partnerId = partnerIdElement.textContent;
+            console.log(`📨 Жалоба на ${partnerId}: ${selectedReason}`);
+            
+            // Показываем уведомление
+            showNotification('✅ Жалоба отправлена', 'Мы рассмотрим вашу жалобу в ближайшее время');
+            playSound('message');
+            
+            overlay.remove();
+            complainBtn.disabled = true;
+            complainBtn.classList.remove('active');
+        });
+        
+        // Клик вне модалки
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        });
+    }
+
+    // ============ ЧАТ ============
+    function enableChat(enabled) {
+        chatInput.disabled = !enabled;
+        chatSendBtn.disabled = !enabled;
+        if (enabled) {
+            chatStatus.textContent = '✅ В чате';
+            chatStatus.className = 'chat-status active';
+            chatInput.placeholder = 'Напиши сообщение...';
+            chatInput.focus();
+        } else {
+            chatStatus.textContent = '⛔ Не в чате';
+            chatStatus.className = 'chat-status';
+            chatInput.placeholder = 'Чат недоступен';
+        }
+    }
+
+    function sendMessage() {
+        const text = chatInput.value.trim();
+        if (!text || !isConnected) return;
+        
+        if (socket && socket.connected) {
+            socket.emit('chat-message', {
+                to: partnerIdElement.textContent,
+                text: text,
+                time: getCurrentTime()
+            });
+        }
+        
+        addMessage(text, 'self', getCurrentTime());
+        chatInput.value = '';
+        playSound('message');
+    }
+
+    function addMessage(text, type, time) {
+        const placeholder = chatMessages.querySelector('.chat-placeholder');
+        if (placeholder) {
+            placeholder.remove();
+        }
+        
+        const msg = document.createElement('div');
+        msg.className = `chat-message ${type}`;
+        msg.innerHTML = `${text} <span class="msg-time">${time || getCurrentTime()}</span>`;
+        chatMessages.appendChild(msg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function getCurrentTime() {
+        const now = new Date();
+        return now.getHours().toString().padStart(2, '0') + ':' + 
+               now.getMinutes().toString().padStart(2, '0');
+    }
+
+    // ============ ТАЙМЕР ============
+    function startTimer() {
+        seconds = 0;
+        updateTimerDisplay();
+        if (timerInterval) {
+            clearInterval(timerInterval);
+        }
+        timerInterval = setInterval(() => {
+            seconds++;
+            updateTimerDisplay();
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        seconds = 0;
+        updateTimerDisplay();
+    }
+
+    function updateTimerDisplay() {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        timerDisplay.textContent = `⏱️ ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
     // ============ ВИДЕО ============
@@ -400,43 +670,12 @@
         else if (type === 'searching') statusDot.classList.add('searching');
     }
 
-    // ============ ЗВУКИ ============
-    function playConnectionSound() {
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.frequency.value = 880;
-            oscillator.type = 'sine';
-            gainNode.gain.value = 0.1;
-            oscillator.start();
-            setTimeout(() => oscillator.stop(), 200);
-        } catch (e) {}
-    }
-
-    function playFailSound() {
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.frequency.value = 400;
-            oscillator.type = 'sawtooth';
-            gainNode.gain.value = 0.05;
-            oscillator.start();
-            setTimeout(() => oscillator.stop(), 300);
-        } catch (e) {}
-    }
-
     // ============ УВЕДОМЛЕНИЯ ============
     function showNotification(title, message) {
         const notification = document.createElement('div');
         notification.className = 'notification';
         notification.innerHTML = `
-            <div class="notification-icon">⏱️</div>
+            <div class="notification-icon">${title.includes('✅') ? '✅' : '⏱️'}</div>
             <div class="notification-content">
                 <div class="notification-title">${title}</div>
                 <div class="notification-message">${message}</div>
@@ -474,7 +713,6 @@
                 }
             };
             
-            // Если режим "с камерой" — добавляем видео
             if (currentMode === 'video') {
                 constraints.video = {
                     width: { ideal: 640 },
@@ -525,11 +763,11 @@
 
     // ============ ИНИЦИАЛИЗАЦИЯ ============
     function init() {
-        // Выбираем режим по умолчанию
         selectMode('video');
         
         permissionOverlay.classList.remove('hidden');
         startBtn.disabled = true;
+        complainBtn.disabled = true;
         
         connectToServer();
         connectToPeerServer();
@@ -537,6 +775,15 @@
         permissionBtn.addEventListener('click', handlePermissionGrant);
         startBtn.addEventListener('click', startSession);
         stopBtn.addEventListener('click', stopSession);
+        complainBtn.addEventListener('click', openComplainModal);
+        
+        chatSendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !startBtn.disabled) startBtn.click();
@@ -552,6 +799,9 @@
             }
             if (peer && !peer.destroyed) {
                 peer.destroy();
+            }
+            if (timerInterval) {
+                clearInterval(timerInterval);
             }
         });
 
