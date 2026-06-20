@@ -15,12 +15,25 @@
             <div class="permission-card">
                 <div class="permission-icon">🎙️</div>
                 <h2>✦ АРТЕФАКТ АКТИВАЦИЯ ✦</h2>
-                <p>Для входа в измерение нужны камера и голос</p>
+                <p>Выбери режим подключения</p>
+                
+                <!-- КНОПКИ ВЫБОРА РЕЖИМА -->
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="video" id="modeVideo">
+                        <span class="mode-icon">📹</span>
+                        <span class="mode-label">С КАМЕРОЙ</span>
+                    </button>
+                    <button class="mode-btn" data-mode="audio" id="modeAudio">
+                        <span class="mode-icon">🎧</span>
+                        <span class="mode-label">БЕЗ КАМЕРЫ</span>
+                    </button>
+                </div>
+                
                 <button class="btn btn-primary" id="permissionBtn">
                     ▶ АКТИВИРОВАТЬ
                 </button>
                 <div class="permission-hint">
-                    <span>⚠️ Браузер запросит доступ</span>
+                    <span id="modeHint">⚠️ Браузер запросит доступ к камере и микрофону</span>
                 </div>
             </div>
         </div>
@@ -41,7 +54,7 @@
             <div class="video-box self" id="selfBox">
                 <video id="selfVideo" autoplay playsinline muted></video>
                 <div class="placeholder" id="selfPlaceholder">📷 камера</div>
-                <div class="badge">ВЫ</div>
+                <div class="badge" id="selfBadge">ВЫ</div>
             </div>
         </div>
 
