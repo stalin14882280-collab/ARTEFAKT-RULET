@@ -12,15 +12,117 @@
     const stopBtn = document.getElementById('stopBtn');
     const permissionOverlay = document.getElementById('permissionOverlay');
     const permissionBtn = document.getElementById('permissionBtn');
+    const serverStatus = document.getElementById('serverStatus');
+    const serverDot = document.getElementById('serverDot');
+    const serverText = document.getElementById('serverText');
+    const onlineCount = document.getElementById('onlineCount');
 
     // Состояние
     let localStream = null;
+    let peer = null;
+    let currentCall = null;
     let isActive = false;
-    let searchInterval = null;
     let isConnected = false;
     let isPermissionGranted = false;
+    let myPeerId = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT = 5;
 
-    // ---------- ЗАПРОС РАЗРЕШЕНИЙ ----------
+    // ---------- КОНФИГУРАЦИЯ PEERJS ----------
+    // Используем бесплатный сервер PeerJS
+    // Для продакшена лучше использовать свой сервер
+    const PEER_CONFIG = {
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                {
+                    urls: 'turn:relay1.expressturn.com:3478',
+                    username: 'efZRVVVFCWXWUOQCUJ',
+                    credential: 'sZ6BVVUYSXJEVNKY'
+                }
+            ]
+        }
+    };
+
+    // ---------- ПОДКЛЮЧЕНИЕ К PEERJS ----------
+    function connectToPeerServer() {
+        serverText.textContent = 'Подключение к серверу...';
+        serverDot.className = 'status-dot';
+        
+        peer = new Peer(undefined, PEER_CONFIG);
+
+        peer.on('open', (id) => {
+            myPeerId = id;
+            serverText.textContent = `✅ Сервер: ${id.slice(0, 8)}...`;
+            serverDot.className = 'status-dot connected';
+            reconnectAttempts = 0;
+            console.log('✅ PeerJS подключён, ID:', id);
+            
+            // Обновляем счётчик (имитация)
+            updateOnlineCount();
+        });
+
+        peer.on('error', (err) => {
+            console.error('❌ Ошибка PeerJS:', err);
+            serverText.textContent = '⚠️ Ошибка соединения';
+            serverDot.className = 'status-dot';
+            
+            // Попытка переподключения
+            if (reconnectAttempts < MAX_RECONNECT) {
+                reconnectAttempts++;
+                setTimeout(() => {
+                    console.log(`🔄 Попытка переподключения ${reconnectAttempts}/${MAX_RECONNECT}`);
+                    connectToPeerServer();
+                }, 3000 * reconnectAttempts);
+            }
+        });
+
+        peer.on('disconnected', () => {
+            serverText.textContent = '⚠️ Сервер отключён';
+            serverDot.className = 'status-dot';
+            console.warn('⚠️ PeerJS отключился');
+        });
+
+        peer.on('close', () => {
+            serverText.textContent = '❌ Соединение закрыто';
+            serverDot.className = 'status-dot';
+            console.warn('❌ PeerJS закрыт');
+        });
+
+        // Обработка входящих звонков
+        peer.on('call', (call) => {
+            console.log('📞 Входящий вызов от:', call.peer);
+            if (isActive) {
+                // Уже в разговоре — отклоняем
+                call.close();
+                return;
+            }
+            // Принимаем звонок
+            acceptCall(call);
+        });
+
+        // Обновляем статус каждые 30 секунд
+        setInterval(() => {
+            if (peer && !peer.destroyed) {
+                updateOnlineCount();
+            }
+        }, 30000);
+    }
+
+    // ---------- СЧЁТЧИК ОНЛАЙН (ИМИТАЦИЯ) ----------
+    function updateOnlineCount() {
+        // В реальном приложении здесь был бы запрос к серверу
+        // Пока генерируем случайное число
+        const count = Math.floor(Math.random() * 50) + 10;
+        onlineCount.textContent = count;
+    }
+
+    // ---------- ЗАПРОС МЕДИА ----------
     async function requestMedia() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -29,7 +131,11 @@
                     height: { ideal: 480 },
                     facingMode: 'user'
                 },
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             });
             return stream;
         } catch (err) {
@@ -37,7 +143,6 @@
             
             let message = '❌ Нет доступа к камере или микрофону.\n';
             if (err.name === 'NotAllowedError') {
-                message += 'Ты запретил доступ в браузере.\n';
                 message += 'Нажми на 🔒 в адресной строке и разреши доступ.';
             } else if (err.name === 'NotFoundError') {
                 message += 'Камера или микрофон не найдены.';
@@ -50,78 +155,31 @@
         }
     }
 
-    // ---------- ПРОВЕРКА РАЗРЕШЕНИЙ ----------
-    async function checkPermissions() {
-        try {
-            // Проверяем, есть ли уже разрешения
-            const videoPermission = await navigator.permissions.query({ name: 'camera' });
-            const audioPermission = await navigator.permissions.query({ name: 'microphone' });
-            
-            if (videoPermission.state === 'granted' && audioPermission.state === 'granted') {
-                // Разрешения уже есть — сразу запрашиваем поток
-                return await requestMedia();
-            }
-            
-            return null;
-        } catch (e) {
-            // Если API недоступен (старые браузеры)
-            return null;
-        }
-    }
-
-    // ---------- АВТОМАТИЧЕСКИЙ ЗАПРОС ПРИ ЗАГРУЗКЕ ----------
-    async function autoRequestPermission() {
-        try {
-            // Сначала проверяем, может разрешения уже есть
-            const stream = await checkPermissions();
-            if (stream) {
-                // Ура! Разрешения уже были
-                localStream = stream;
-                showSelfVideo(stream);
-                isPermissionGranted = true;
-                permissionOverlay.classList.add('hidden');
-                startBtn.disabled = false;
-                setStatus('ГОТОВ К ПОИСКУ', 'idle');
-                console.log('✅ Разрешения уже были, поток получен');
-                return;
-            }
-        } catch (e) {
-            // Ничего страшного, покажем оверлей
-        }
-        
-        // Если разрешений нет — показываем оверлей
-        permissionOverlay.classList.remove('hidden');
-        startBtn.disabled = true;
-        console.log('⏳ Ожидаем разрешения пользователя');
-    }
-
-    // ---------- ОБРАБОТЧИК КНОПКИ "РАЗРЕШИТЬ" ----------
+    // ---------- РАЗРЕШЕНИЯ ----------
     async function handlePermissionGrant() {
         try {
-            // Запрашиваем доступ
             const stream = await requestMedia();
-            if (!stream) {
-                // Пользователь отказал
-                alert('❌ Без доступа к камере и микрофону видеочат не работает.');
-                return;
-            }
+            if (!stream) return;
 
-            // Успех!
             localStream = stream;
             showSelfVideo(stream);
             isPermissionGranted = true;
             permissionOverlay.classList.add('hidden');
             startBtn.disabled = false;
             setStatus('ГОТОВ К ПОИСКУ', 'idle');
-            console.log('✅ Разрешения получены, поток активирован');
+            
+            // Подключаемся к PeerJS, если ещё не подключены
+            if (!peer) {
+                connectToPeerServer();
+            }
             
         } catch (err) {
-            console.error('Ошибка при получении разрешений:', err);
+            console.error('Ошибка:', err);
             alert('❌ Что-то пошло не так. Попробуй обновить страницу.');
         }
     }
 
-    // ---------- ОТОБРАЖЕНИЕ СВОЕГО ВИДЕО ----------
+    // ---------- ВИДЕО ----------
     function showSelfVideo(stream) {
         selfVideo.srcObject = stream;
         selfVideo.onloadedmetadata = () => {
@@ -138,24 +196,26 @@
         selfPlaceholder.style.display = 'block';
     }
 
-    // ---------- ОТОБРАЖЕНИЕ СОБЕСЕДНИКА ----------
-    function showRemoteConnected() {
-        remotePlaceholder.textContent = '👤 ПОДКЛЮЧЁН';
-        remotePlaceholder.style.color = '#70ddc0';
-        remotePlaceholder.style.textShadow = '0 0 30px #00ffbb55';
+    function showRemoteVideo(stream) {
+        remoteVideo.srcObject = stream;
+        remoteVideo.onloadedmetadata = () => {
+            remoteVideo.play().catch(() => {});
+        };
+        remotePlaceholder.style.display = 'none';
     }
 
-    function hideRemote() {
+    function hideRemoteVideo() {
+        if (remoteVideo.srcObject) {
+            remoteVideo.srcObject.getTracks().forEach(t => t.stop());
+        }
+        remoteVideo.srcObject = null;
+        remotePlaceholder.style.display = 'block';
         remotePlaceholder.textContent = '⚡ ожидание';
         remotePlaceholder.style.color = '#3f6a5e';
         remotePlaceholder.style.textShadow = 'none';
-        if (remoteVideo.srcObject) {
-            remoteVideo.srcObject.getTracks().forEach(t => t.stop());
-            remoteVideo.srcObject = null;
-        }
     }
 
-    // ---------- ОБНОВЛЕНИЕ СТАТУСА ----------
+    // ---------- СТАТУС ----------
     function setStatus(text, type = 'idle') {
         statusText.textContent = text;
         statusDot.className = 'dot';
@@ -163,101 +223,178 @@
         else if (type === 'searching') statusDot.classList.add('searching');
     }
 
-    // ---------- ЗАПУСК ПОИСКА ----------
+    // ---------- ПОИСК СОБЕСЕДНИКА ----------
+    async function findPartner() {
+        if (!peer || peer.destroyed) {
+            alert('❌ Нет соединения с сервером');
+            return;
+        }
+
+        // Генерируем случайный ID для поиска
+        // В реальном приложении здесь был бы запрос к серверу за списком свободных пользователей
+        // Пока используем случайный ID
+        const possibleId = generateRandomId();
+        
+        console.log('🔍 Ищем собеседника...');
+        setStatus('ПОИСК СОБЕСЕДНИКА...', 'searching');
+        
+        try {
+            // Пытаемся позвонить на случайный ID
+            const call = peer.call(possibleId, localStream, {
+                metadata: { type: 'artefakt' }
+            });
+            
+            // Ждём ответа 5 секунд
+            let answered = false;
+            const timeout = setTimeout(() => {
+                if (!answered) {
+                    call.close();
+                    // Если не ответили, пробуем другой ID
+                    findPartner();
+                }
+            }, 5000);
+
+            call.on('stream', (remoteStream) => {
+                answered = true;
+                clearTimeout(timeout);
+                console.log('✅ Соединение установлено!');
+                showRemoteVideo(remoteStream);
+                isConnected = true;
+                setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Звук подключения
+                playConnectionSound();
+            });
+
+            call.on('close', () => {
+                console.log('🔴 Соединение закрыто');
+                if (isConnected) {
+                    disconnectCall();
+                }
+            });
+
+            currentCall = call;
+
+        } catch (err) {
+            console.error('Ошибка при звонке:', err);
+            // Пробуем снова через секунду
+            setTimeout(() => {
+                if (isActive) findPartner();
+            }, 1000);
+        }
+    }
+
+    // ---------- ПРИНЯТЬ ВХОДЯЩИЙ ЗВОНОК ----------
+    function acceptCall(call) {
+        if (!localStream) {
+            call.close();
+            return;
+        }
+
+        isActive = true;
+        currentCall = call;
+        
+        call.answer(localStream);
+        
+        call.on('stream', (remoteStream) => {
+            console.log('✅ Входящее соединение принято!');
+            showRemoteVideo(remoteStream);
+            isConnected = true;
+            setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            playConnectionSound();
+        });
+
+        call.on('close', () => {
+            console.log('🔴 Соединение закрыто (входящее)');
+            if (isConnected) {
+                disconnectCall();
+            }
+        });
+    }
+
+    // ---------- РАЗЪЕДИНЕНИЕ ----------
+    function disconnectCall() {
+        if (currentCall) {
+            currentCall.close();
+            currentCall = null;
+        }
+        hideRemoteVideo();
+        isConnected = false;
+        isActive = false;
+        setStatus('⏹ РАЗЪЕДИНЕНО', 'idle');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+
+    // ---------- ЗАПУСК СЕССИИ ----------
     async function startSession() {
         if (isActive) return;
         if (!isPermissionGranted || !localStream) {
             alert('Сначала разреши доступ к камере и микрофону');
             return;
         }
-
-        // Активируем состояние
-        isActive = true;
-        isConnected = false;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        setStatus('ПОИСК СОБЕСЕДНИКА...', 'searching');
-
-        // Имитация поиска
-        let searchTime = 1500 + Math.random() * 4000;
-        let elapsed = 0;
-        const step = 200;
-
-        if (searchInterval) clearInterval(searchInterval);
-        searchInterval = setInterval(() => {
-            elapsed += step;
-            if (elapsed >= searchTime) {
-                clearInterval(searchInterval);
-                searchInterval = null;
-                if (isActive) {
-                    isConnected = true;
-                    setStatus('✅ ПОДКЛЮЧЕНО!', 'active');
-                    showRemoteConnected();
-                    
-                    // Звук подключения
-                    try {
-                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                        const oscillator = audioCtx.createOscillator();
-                        const gainNode = audioCtx.createGain();
-                        oscillator.connect(gainNode);
-                        gainNode.connect(audioCtx.destination);
-                        oscillator.frequency.value = 880;
-                        oscillator.type = 'sine';
-                        gainNode.gain.value = 0.1;
-                        oscillator.start();
-                        setTimeout(() => oscillator.stop(), 200);
-                    } catch (e) {}
-                }
-            } else {
-                const dots = '.'.repeat(Math.floor(elapsed / 600) % 4);
-                setStatus(`ПОИСК${dots}`, 'searching');
-            }
-        }, step);
-    }
-
-    // ---------- ОСТАНОВКА СЕССИИ ----------
-    function stopSession() {
-        if (!isActive) return;
-
-        isActive = false;
-        isConnected = false;
-
-        if (searchInterval) {
-            clearInterval(searchInterval);
-            searchInterval = null;
+        if (!peer || peer.destroyed) {
+            alert('⏳ Подключение к серверу... Подожди');
+            return;
         }
 
-        hideRemote();
+        isActive = true;
+        setStatus('ПОИСК...', 'searching');
+        findPartner();
+    }
+
+    // ---------- ОСТАНОВКА ----------
+    function stopSession() {
+        if (!isActive && !isConnected) return;
+        
+        disconnectCall();
+        hideRemoteVideo();
         setStatus('⏹ ОСТАНОВЛЕНО', 'idle');
         startBtn.disabled = false;
         stopBtn.disabled = true;
     }
 
-    // ---------- ПОЛНАЯ ПЕРЕЗАГРУЗКА ----------
-    function fullReset() {
-        stopSession();
-        if (localStream) {
-            localStream.getTracks().forEach(t => t.stop());
-            localStream = null;
+    // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+    function generateRandomId() {
+        // Генерируем случайный PeerJS ID (8 символов)
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let id = '';
+        for (let i = 0; i < 8; i++) {
+            id += chars[Math.floor(Math.random() * chars.length)];
         }
-        hideSelfVideo();
-        hideRemote();
-        isPermissionGranted = false;
-        setStatus('НАЖМИТЕ «НАЧАТЬ»', 'idle');
-        startBtn.disabled = true;
-        stopBtn.disabled = true;
-        permissionOverlay.classList.remove('hidden');
+        return id;
+    }
+
+    function playConnectionSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.value = 880;
+            oscillator.type = 'sine';
+            gainNode.gain.value = 0.1;
+            oscillator.start();
+            setTimeout(() => oscillator.stop(), 200);
+        } catch (e) {}
     }
 
     // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     function init() {
-        // Показываем оверлей и запрашиваем разрешения
-        autoRequestPermission();
+        // Показываем оверлей разрешений
+        permissionOverlay.classList.remove('hidden');
+        startBtn.disabled = true;
+        
+        // Подключаемся к PeerJS сразу
+        connectToPeerServer();
 
-        // Обработчик кнопки "РАЗРЕШИТЬ"
+        // Обработчики
         permissionBtn.addEventListener('click', handlePermissionGrant);
-
-        // Кнопки управления
         startBtn.addEventListener('click', startSession);
         stopBtn.addEventListener('click', stopSession);
 
@@ -276,10 +413,13 @@
             if (localStream) {
                 localStream.getTracks().forEach(t => t.stop());
             }
+            if (peer && !peer.destroyed) {
+                peer.destroy();
+            }
         });
 
         console.log('✦ ARTEFAKT RULET ✦');
-        console.log('📷 Автоматический запрос разрешений...');
+        console.log('📡 Подключение к PeerJS серверу...');
     }
 
     // Запускаем
