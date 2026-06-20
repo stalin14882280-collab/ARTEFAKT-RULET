@@ -1,0 +1,546 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #0a0c0e;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: #d0f0e8;
+    padding: 20px;
+}
+
+.container {
+    background: #12181c;
+    border-radius: 56px;
+    padding: 30px 30px 40px;
+    max-width: 900px;
+    width: 100%;
+    border: 1px solid rgba(0, 255, 200, 0.15);
+    box-shadow: 0 0 70px rgba(0, 255, 200, 0.06), inset 0 0 40px rgba(0, 255, 200, 0.02);
+    text-align: center;
+    backdrop-filter: blur(2px);
+}
+
+h1 {
+    font-size: 32px;
+    letter-spacing: 8px;
+    font-weight: 300;
+    text-transform: uppercase;
+    color: #b5ffe6;
+    text-shadow: 0 0 30px #00d5b0, 0 0 80px #00887755;
+    margin-bottom: 24px;
+}
+
+/* ---------- СТАТУС СЕРВЕРА ---------- */
+.server-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    margin-bottom: 14px;
+    background: #0a1216;
+    border-radius: 40px;
+    border: 1px solid #1a332b;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: #5a8a7a;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff4444;
+    transition: 0.3s;
+    display: inline-block;
+}
+
+.status-dot.connected {
+    background: #44ff88;
+    box-shadow: 0 0 20px #44ff8866;
+    animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ---------- ВИДЕО ---------- */
+.video-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 14px;
+    background: #0a1014;
+    border-radius: 40px;
+    padding: 14px;
+    border: 1px solid #1d3a32;
+    box-shadow: inset 0 0 30px #00000088;
+    margin-bottom: 22px;
+}
+
+.video-box {
+    position: relative;
+    background: #141e1e;
+    border-radius: 28px;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #2a4f44;
+    box-shadow: 0 0 20px rgba(0, 200, 170, 0.05);
+}
+
+.video-box video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #0b1212;
+    transform: scaleX(-1);
+}
+
+.video-box .placeholder {
+    position: absolute;
+    color: #3f6a5e;
+    font-size: 18px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 300;
+    opacity: 0.7;
+    text-shadow: 0 0 20px #00aa8833;
+    pointer-events: none;
+}
+
+.video-box .badge {
+    position: absolute;
+    bottom: 14px;
+    left: 18px;
+    background: #0f1f1bcc;
+    backdrop-filter: blur(6px);
+    padding: 6px 20px;
+    border-radius: 40px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    border: 1px solid #2d6b5a;
+    color: #a0ded0;
+    text-transform: uppercase;
+}
+
+.video-box.self {
+    border-color: #2f8f7a;
+}
+.video-box.self .badge {
+    border-color: #4fbfa0;
+    color: #b5ffe6;
+}
+
+/* ---------- ИНФО О СОБЕСЕДНИКЕ ---------- */
+.partner-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 8px 0 12px;
+    padding: 8px 20px;
+    background: #0a1216;
+    border-radius: 40px;
+    border: 1px solid #1a332b;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: #5a8a7a;
+}
+
+.partner-info .label {
+    color: #4a7a6a;
+    text-transform: uppercase;
+}
+
+.partner-info .id {
+    color: #80ddc0;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    font-size: 16px;
+    background: #0f1a17;
+    padding: 2px 14px;
+    border-radius: 20px;
+    border: 1px solid #2a5a4a;
+}
+
+.partner-info .id.connected {
+    border-color: #44ff88;
+    color: #88ffcc;
+    box-shadow: 0 0 20px #44ff8844;
+}
+
+/* ---------- СТАТУС ---------- */
+.status-bar {
+    font-size: 22px;
+    letter-spacing: 3px;
+    padding: 12px 0 8px;
+    color: #80cbbc;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.status-bar .dot {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #2f6f5a;
+    transition: 0.3s;
+}
+
+.status-bar .dot.active {
+    background: #00ffb3;
+    box-shadow: 0 0 30px #00ffb3aa;
+}
+
+.status-bar .dot.searching {
+    background: #ffbb44;
+    box-shadow: 0 0 30px #ffbb4488;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.2); }
+    100% { opacity: 0.4; transform: scale(0.9); }
+}
+
+/* ---------- КНОПКИ ---------- */
+.actions {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 16px 0 8px;
+}
+
+.btn {
+    background: transparent;
+    border: 2px solid #2b5f50;
+    color: #b0ffe0;
+    font-size: 22px;
+    padding: 14px 48px;
+    border-radius: 60px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    font-weight: 300;
+    cursor: pointer;
+    transition: 0.25s;
+    background: #0d1b18;
+    min-width: 180px;
+    box-shadow: 0 0 20px #00aa8822;
+}
+
+.btn:hover:not(:disabled) {
+    background: #1b4238;
+    border-color: #5fffd0;
+    box-shadow: 0 0 50px #00ffbb33;
+    transform: scale(1.02);
+}
+
+.btn:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+.btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    filter: grayscale(0.7);
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-primary {
+    border-color: #3fbf8f;
+    background: #0f2a22;
+}
+
+.btn-danger {
+    border-color: #8f3f4f;
+    background: #2a141a;
+    color: #ffb0b0;
+}
+
+.btn-danger:hover:not(:disabled) {
+    border-color: #ff6f7f;
+    background: #3f1f28;
+    box-shadow: 0 0 50px #ff336644;
+}
+
+/* ---------- СЧЁТЧИК ОНЛАЙН ---------- */
+.online-counter {
+    margin-top: 12px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: #4a7a6a;
+    background: #0a1414;
+    padding: 8px 20px;
+    border-radius: 40px;
+    display: inline-block;
+    border: 1px solid #1a3a32;
+}
+
+.online-counter span {
+    color: #80ddc0;
+    font-weight: 600;
+}
+
+/* ---------- ФУТЕР ---------- */
+.footer {
+    margin-top: 22px;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: #2d554a;
+    border-top: 1px solid #1a332b;
+    padding-top: 18px;
+}
+
+/* ---------- ОВЕРЛЕЙ РАЗРЕШЕНИЙ ---------- */
+.permission-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(5, 8, 10, 0.92);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.4s ease;
+}
+
+.permission-overlay.hidden {
+    display: none;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; backdrop-filter: blur(0px); }
+    to { opacity: 1; backdrop-filter: blur(12px); }
+}
+
+.permission-card {
+    background: #141c20;
+    padding: 50px 40px 40px;
+    border-radius: 48px;
+    max-width: 440px;
+    width: 90%;
+    text-align: center;
+    border: 1px solid rgba(0, 255, 200, 0.15);
+    box-shadow: 0 0 80px rgba(0, 255, 200, 0.06), inset 0 0 40px rgba(0, 255, 200, 0.02);
+    transform: scale(1);
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.permission-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    display: block;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.permission-card h2 {
+    color: #b5ffe6;
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+    text-shadow: 0 0 30px #00d5b055;
+}
+
+.permission-card p {
+    color: #80cbbc;
+    font-size: 18px;
+    font-weight: 300;
+    letter-spacing: 1px;
+    line-height: 1.6;
+    margin-bottom: 30px;
+}
+
+.permission-card .btn {
+    font-size: 20px;
+    padding: 16px 48px;
+    min-width: 200px;
+}
+
+.permission-hint {
+    margin-top: 20px;
+    font-size: 14px;
+    color: #3f6a5e;
+    letter-spacing: 1px;
+}
+
+.permission-hint span {
+    display: inline-block;
+    background: #0f1a17;
+    padding: 6px 18px;
+    border-radius: 30px;
+    border: 1px solid #1d3a32;
+}
+
+/* ---------- УВЕДОМЛЕНИЯ ---------- */
+.notification {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1a2a2a;
+    border: 1px solid #4f8f7a;
+    border-radius: 20px;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 0 50px rgba(0, 255, 200, 0.1);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    min-width: 300px;
+    max-width: 90%;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.notification.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+    pointer-events: all;
+}
+
+.notification-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+    animation: float 2s ease-in-out infinite;
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-title {
+    color: #b5ffe6;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.notification-message {
+    color: #80cbbc;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+}
+
+.notification-close {
+    background: transparent;
+    border: none;
+    color: #4a7a6a;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 50%;
+    transition: 0.3s;
+    flex-shrink: 0;
+}
+
+.notification-close:hover {
+    color: #b5ffe6;
+    background: #1a332b;
+}
+
+/* ---------- АДАПТИВ ---------- */
+@media (max-width: 700px) {
+    .video-grid {
+        grid-template-columns: 1fr;
+    }
+    .video-box.self {
+        order: 2;
+        max-height: 200px;
+    }
+    .video-box.remote {
+        order: 1;
+    }
+    h1 {
+        font-size: 22px;
+        letter-spacing: 4px;
+    }
+    .btn {
+        font-size: 18px;
+        padding: 12px 28px;
+        min-width: 140px;
+    }
+    .container {
+        padding: 20px 16px 30px;
+        border-radius: 32px;
+    }
+    .permission-card {
+        padding: 30px 20px 30px;
+        border-radius: 32px;
+    }
+    .permission-card h2 {
+        font-size: 22px;
+    }
+    .permission-card p {
+        font-size: 16px;
+    }
+    .permission-icon {
+        font-size: 48px;
+    }
+    .notification {
+        min-width: auto;
+        padding: 14px 18px;
+        bottom: 20px;
+        width: 90%;
+    }
+    .notification-icon {
+        font-size: 24px;
+    }
+    .notification-title {
+        font-size: 16px;
+    }
+    .notification-message {
+        font-size: 13px;
+    }
+    .server-status {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+    .online-counter {
+        font-size: 14px;
+        padding: 6px 16px;
+    }
+    .partner-info {
+        font-size: 12px;
+        padding: 6px 14px;
+    }
+    .partner-info .id {
+        font-size: 13px;
+    }
+}
