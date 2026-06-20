@@ -45,6 +45,12 @@
             </div>
         </div>
 
+        <!-- ID собеседника -->
+        <div class="partner-info" id="partnerInfo">
+            <span class="label">СОБЕСЕДНИК:</span>
+            <span class="id" id="partnerId">—</span>
+        </div>
+
         <div class="status-bar" id="statusBar">
             <span class="dot" id="statusDot"></span>
             <span id="statusText">НАЖМИТЕ «НАЧАТЬ»</span>
@@ -65,6 +71,8 @@
 
     <!-- Подключаем PeerJS -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- Подключаем Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
